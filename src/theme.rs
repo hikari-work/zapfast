@@ -1110,6 +1110,22 @@ pub fn logo(ui: &egui::Ui, center: egui::Pos2, diameter: f32, disc: Color32, gly
         .paint_at(ui, icon_rect);
 }
 
+/// A button's label on one line. egui lays right-to-left text out in logical
+/// order, so such a label is put in visual order or it reads backwards. Only
+/// then is the shared galley copied: buttons are drawn every frame.
+pub(crate) fn button_label(
+    ui: &egui::Ui,
+    label: &str,
+    font: egui::FontId,
+    color: Color32,
+) -> std::sync::Arc<egui::Galley> {
+    let mut galley = ui.painter().layout_no_wrap(label.to_string(), font, color);
+    if label.chars().any(crate::bidi::is_rtl) {
+        crate::bidi::reorder_rtl_runs(std::sync::Arc::make_mut(&mut galley));
+    }
+    galley
+}
+
 /// A pill-shaped text button: filled for the primary action, outlined otherwise.
 pub fn pill_button(ui: &mut egui::Ui, palette: &Palette, label: &str, primary: bool) -> Response {
     let font = semibold(13.0);
@@ -1118,7 +1134,7 @@ pub fn pill_button(ui: &mut egui::Ui, palette: &Palette, label: &str, primary: b
     } else {
         palette.text
     };
-    let galley = ui.painter().layout_no_wrap(label.to_string(), font, color);
+    let galley = button_label(ui, label, font, color);
     let padding = Vec2::new(18.0, 8.0);
     let size = galley.size() + padding * 2.0;
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
@@ -1178,7 +1194,7 @@ pub fn soft_button(
 ) -> Response {
     let font = medium(13.0);
     let color = if active { palette.accent } else { palette.text };
-    let galley = ui.painter().layout_no_wrap(label.to_string(), font, color);
+    let galley = button_label(ui, label, font, color);
     let icon_size = 15.0;
     let icon_width = if icon.is_some() { icon_size + 6.0 } else { 0.0 };
     let padding = Vec2::new(12.0, 7.0);

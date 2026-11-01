@@ -898,6 +898,31 @@ mod tests {
         galley.cursor_from_pos(vec2(x, y)).index.0
     }
 
+    /// A button's label is not drawn through the message path, so it needs
+    /// the same reordering of its own.
+    #[test]
+    fn a_button_label_reads_right_to_left() {
+        let ctx = egui::Context::default();
+        install_fonts(&ctx);
+        for text in ["שלום", "مرحبا"] {
+            let galley = std::cell::RefCell::new(None);
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(480.0, 160.0))),
+                    ..Default::default()
+                },
+                |ui| {
+                    let font = FontId::proportional(13.0);
+                    let label = crate::theme::button_label(ui, text, font, Color32::WHITE);
+                    *galley.borrow_mut() = Some(label);
+                },
+            );
+            output.textures_delta.clear();
+            let galley = galley.into_inner().expect("a label");
+            assert_eq!(visual_chars(&galley), drawn_in_order(&galley, text));
+        }
+    }
+
     #[test]
     fn confirmed_mixed_text_matches_the_bidi_algorithm() {
         for text in [
