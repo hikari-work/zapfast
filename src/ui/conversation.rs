@@ -62,6 +62,7 @@ const NOT_SENT_HINT: &str =
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let Some(chat) = app.current_chat().cloned() else {
         super::banner(app, ui);
+        super::voice_bar::show(app, ui);
         empty(app, ui);
         return;
     };
@@ -83,6 +84,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 let veil = ui.painter().add(egui::Shape::Noop);
                 header(app, ui, &chat);
                 super::banner(app, ui);
+                super::voice_bar::show(app, ui);
                 let bar = ui.min_rect();
                 // Strongest at the top, both ease off from within the bar to
                 // a little below it, so where they start never shows.
@@ -109,6 +111,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     }
     let header = header(app, ui, &chat);
     super::banner(app, ui);
+    super::voice_bar::show(app, ui);
     pin_banner(app, ui, &chat);
     let review = attachment_review(app, ui, &chat);
     composer(app, ui, &chat, review);

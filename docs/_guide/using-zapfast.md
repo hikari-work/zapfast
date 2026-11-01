@@ -518,7 +518,9 @@ message for every speed, including 1.25x and 1.75x. The choice is remembered
 for later messages. To give one chat its own speed, right-click the chat in the
 list and pick **Voice message speed**. That chat then always plays at its own
 speed, and the chip there changes only that chat. Pick **Default** to follow
-the speed of the other chats again. When a voice message ends, playback carries on through the
+the speed of the other chats again. A voice message keeps playing when you
+open another chat, with a bar under the header there to pause it, stop it, or
+go back to it. When a voice message ends, playback carries on through the
 voice messages right after it that you have not heard yet, as on the phone;
 any other message ends the run. The speaker's pitch stays the same at every
 speed. The first play sends

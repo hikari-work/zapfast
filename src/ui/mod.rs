@@ -28,6 +28,7 @@ pub mod polls;
 pub mod rail;
 pub mod settings;
 pub mod update;
+mod voice_bar;
 pub mod widgets;
 
 use egui::{Align2, CornerRadius, Frame, Margin, Stroke, vec2};

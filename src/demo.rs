@@ -7033,6 +7033,30 @@ mod tests {
         assert_eq!(app.message_cursor.get(&chat), Some(&target));
     }
 
+    /// A clip playing on from another chat keeps a bar of controls there.
+    #[test]
+    fn the_voice_bar_draws_over_another_chat_and_goes_with_the_clip() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.attach(&ctx);
+        render(&mut app, &ctx);
+        let open = app.open_chat.clone().expect("the sample opens a chat");
+        let other = app
+            .chats
+            .iter()
+            .map(|chat| chat.id.clone())
+            .find(|id| *id != open)
+            .expect("another chat");
+        app.player.hold_paused("clip");
+        app.play_clip_from(&other);
+        render(&mut app, &ctx);
+        assert_eq!(app.voice_elsewhere(), Some((other, "clip".to_owned())));
+        app.actions.push(crate::model::Action::StopVoice);
+        render(&mut app, &ctx);
+        render(&mut app, &ctx);
+        assert_eq!(app.voice_elsewhere(), None);
+    }
+
     /// One frame with the window focused or not, as the platform reports it.
     fn frame_with_window_focus(app: &mut App, ctx: &egui::Context, focused: bool) {
         let mut input = egui::RawInput {

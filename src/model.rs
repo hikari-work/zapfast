@@ -2802,6 +2802,11 @@ pub enum Action {
         path: PathBuf,
         fraction: f32,
     },
+    /// Plays or pauses the clip in the player from the bar another chat
+    /// shows it in.
+    ToggleVoice,
+    /// Stops the clip in the player.
+    StopVoice,
     /// Sets the voice playback speed to one of the supported speeds.
     SetVoiceSpeed(f32),
     /// Plays or pauses a downloaded video inside its message.

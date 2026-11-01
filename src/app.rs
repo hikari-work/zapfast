@@ -8389,6 +8389,16 @@ impl App {
                     self.toast_error(error);
                 }
             }
+            Action::ToggleVoice => {
+                if let Err(error) = self.player.toggle_current() {
+                    self.toast_error(error);
+                }
+            }
+            Action::StopVoice => {
+                self.player.stop();
+                self.voice_chat = None;
+                self.voice_wanted = None;
+            }
             Action::SetVoiceSpeed(speed) => {
                 self.settings.voice_speed = crate::audio::supported_speed(speed);
                 self.sync_voice_speed();
@@ -10701,6 +10711,34 @@ impl App {
     fn sync_voice_speed(&mut self) {
         let chat = self.voice_clip_chat.clone().or(self.open_chat.clone());
         self.player.set_speed(self.voice_speed_in(chat.as_deref()));
+    }
+
+    /// The clip in the player and its chat, while that chat is not the one
+    /// on screen, whose bubble has the controls.
+    pub fn voice_elsewhere(&self) -> Option<(ChatId, String)> {
+        let message = self.player.current()?;
+        let chat = self.voice_clip_chat.as_ref()?;
+        let on_screen =
+            self.chat_view() && self.current_chat().is_some_and(|open| open.id == *chat);
+        (!on_screen).then(|| (chat.clone(), message.to_owned()))
+    }
+
+    /// What the bar for a clip in `chat` calls it. A locked chat stays
+    /// unnamed while its folder is closed.
+    pub fn voice_chat_title(&self, chat: &str) -> String {
+        match self.chat(chat) {
+            Some(known) if known.locked && !self.locked_folder_open() => {
+                crate::i18n::gettext(self.locale, "Locked chat").into_owned()
+            }
+            Some(known) => self.chat_title(known),
+            None => crate::i18n::gettext(self.locale, "Voice message").into_owned(),
+        }
+    }
+
+    /// Files the clip in the player under `chat`, as playing it there would.
+    #[cfg(any(test, feature = "demo"))]
+    pub fn play_clip_from(&mut self, chat: &str) {
+        self.voice_clip_chat = Some(chat.to_owned());
     }
 
     fn tell_played(&mut self, message: String) {
@@ -15249,6 +15287,32 @@ mod tests {
         assert_eq!(super::tray_colour(Some(true)), IconColour::White);
         assert_eq!(super::tray_colour(Some(false)), IconColour::Black);
         assert_eq!(super::tray_colour(None), IconColour::Original);
+    }
+
+    #[test]
+    fn the_playing_clip_keeps_its_controls_in_other_chats() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.chats
+            .push(Chat::new("1@s.whatsapp.net".into(), "Ada".into()));
+        app.chats
+            .push(Chat::new("2@s.whatsapp.net".into(), "Bob".into()));
+        assert_eq!(app.voice_elsewhere(), None);
+        app.player.hold_paused("clip");
+        app.voice_clip_chat = Some("1@s.whatsapp.net".into());
+        // Its own chat is on screen, and the bubble has the controls.
+        app.open_chat = Some("1@s.whatsapp.net".into());
+        assert_eq!(app.voice_elsewhere(), None);
+        app.open_chat = Some("2@s.whatsapp.net".into());
+        assert_eq!(
+            app.voice_elsewhere(),
+            Some(("1@s.whatsapp.net".into(), "clip".into()))
+        );
+        assert_eq!(app.voice_chat_title("1@s.whatsapp.net"), "Ada");
+        app.chat_mut("1@s.whatsapp.net").unwrap().locked = true;
+        assert_eq!(app.voice_chat_title("1@s.whatsapp.net"), "Locked chat");
+        app.apply(Action::StopVoice, &ctx);
+        assert_eq!(app.voice_elsewhere(), None);
     }
 
     #[test]

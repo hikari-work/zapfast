@@ -348,6 +348,38 @@ impl Player {
         self.finished = None;
     }
 
+    /// The message of the clip in the player, until it ends.
+    pub fn current(&self) -> Option<&str> {
+        self.loaded
+            .as_ref()
+            .filter(|loaded| !loaded.done)
+            .map(|loaded| loaded.message.as_str())
+    }
+
+    /// Plays or pauses the clip in the player, whichever chat is on screen.
+    pub fn toggle_current(&mut self) -> Result<(), String> {
+        match self.current().map(str::to_owned) {
+            // Holding the clip, `toggle` never reads the path.
+            Some(message) => self.toggle(&message, Path::new("")),
+            None => Ok(()),
+        }
+    }
+
+    /// Holds a paused clip of `message`, without a sound device.
+    #[cfg(any(test, feature = "demo"))]
+    pub fn hold_paused(&mut self, message: &str) {
+        let samples = Arc::new(vec![0.0; 48_000 * 4]);
+        self.loaded = Some(Loaded {
+            message: message.to_owned(),
+            buffer: samples.clone(),
+            samples,
+            factor: 1.0,
+            base: Duration::from_secs(1),
+            paused: true,
+            done: false,
+        });
+    }
+
     /// Takes the message whose clip just played to its end, once. The app uses
     /// it to carry on with the next unplayed voice message.
     pub fn take_finished(&mut self) -> Option<String> {
