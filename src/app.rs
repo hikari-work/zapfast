@@ -8707,7 +8707,6 @@ impl App {
                         path,
                         quoting,
                     });
-                    self.picker = None;
                     self.follow_outgoing();
                     self.refocus_composer(ctx);
                 }
