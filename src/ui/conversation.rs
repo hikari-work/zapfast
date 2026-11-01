@@ -379,16 +379,17 @@ fn controls_width(buttons: f32, vibrant: bool) -> f32 {
     if vibrant {
         buttons * 36.0 + (buttons - 0.5) * BUTTON_GAP + (BUTTON_GLASS - 30.0)
     } else {
-        buttons * 36.0
+        // Each button and the spacing beside it.
+        buttons * 44.0
     }
 }
 
-/// Whether a vibrant header `width` wide holds the avatar, a readable name
-/// and `buttons` and `extra` more on their right.
-fn header_fits(width: f32, buttons: f32, extra: f32) -> bool {
+/// Whether a header `width` wide holds the avatar, a readable name and
+/// `buttons` and `extra` more on their right.
+fn header_fits(width: f32, buttons: f32, extra: f32, vibrant: bool) -> bool {
     const AVATAR: f32 = 40.0 + 14.0;
     const NAME: f32 = 140.0;
-    width >= AVATAR + NAME + controls_width(buttons, true) + extra
+    width >= AVATAR + NAME + controls_width(buttons, vibrant) + extra
 }
 
 /// Space between the header's last button and caption buttons `room` wide.
@@ -481,10 +482,10 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                 };
                 let extra = room.right + caption_gap(room.right);
                 let buttons = if narrow { 3.0 } else { 2.0 } + call_buttons;
-                // Vibrant glass takes so much room that Search and the call
-                // buttons go into More rather than push the name under them.
-                let folded = palette.vibrant()
-                    && !header_fits(ui.available_width(), buttons, extra)
+                // In a narrow pane, or on vibrant glass, which takes more room,
+                // Search and the call buttons go into More rather than push
+                // the name under them.
+                let folded = !header_fits(ui.available_width(), buttons, extra, palette.vibrant())
                     && !call_here;
                 let (buttons, call_buttons) = if folded {
                     (buttons - call_buttons - 1.0, 0.0)
@@ -2549,32 +2550,43 @@ fn link_preview_strip(app: &mut App, ui: &mut egui::Ui) {
                 .thumbnail
                 .as_deref()
                 .map(|bytes| (shown.chat.as_str(), image.as_str(), bytes));
-            widgets::raised(ui, &palette, strip_frame(&palette), |ui| {
+            let frame = strip_frame(&palette).inner_margin(Margin::same(10));
+            widgets::raised(ui, &palette, frame, |ui| {
                 ui.set_width(ui.available_width().max(0.0));
-                ui.horizontal(|ui| {
+                // Top-aligned: a centred row would start the card partway down
+                // its own first line and leave the margin above it too deep.
+                ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
+                    ui.spacing_mut().item_spacing.x = 10.0;
+                    let right = ui.max_rect().right();
                     let (bar, _) = ui.allocate_exact_size(vec2(3.0, 0.0), Sense::hover());
-                    let width = (ui.available_width() - 40.0).max(0.0);
+                    let width = (ui.available_width() - 46.0).max(0.0);
                     let card = preview_layout(ui, &palette, &composed.preview, thumbnail, width);
                     ui.painter().rect_filled(
                         Rect::from_x_y_ranges(bar.x_range(), card.y_range()),
                         2.0,
                         palette.accent,
                     );
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let button = theme::icon_button(
-                            ui,
-                            Icon::X,
-                            16.0,
-                            palette.secondary,
-                            palette.text,
-                            remove.as_ref(),
-                        );
-                        #[cfg(test)]
-                        ui.ctx().data_mut(|data| {
-                            data.insert_temp(egui::Id::new("link-preview-dismiss"), button.rect)
-                        });
-                        dismiss = button.clicked();
-                    });
+                    let room = Rect::from_x_y_ranges(card.right()..=right, card.y_range());
+                    ui.scope_builder(
+                        egui::UiBuilder::new()
+                            .max_rect(room)
+                            .layout(Layout::right_to_left(Align::Center)),
+                        |ui| {
+                            let button = theme::icon_button(
+                                ui,
+                                Icon::X,
+                                16.0,
+                                palette.secondary,
+                                palette.text,
+                                remove.as_ref(),
+                            );
+                            #[cfg(test)]
+                            ui.ctx().data_mut(|data| {
+                                data.insert_temp(egui::Id::new("link-preview-dismiss"), button.rect)
+                            });
+                            dismiss = button.clicked();
+                        },
+                    );
                 });
             })
         }
@@ -11775,11 +11787,20 @@ mod tests {
     #[test]
     fn a_vibrant_header_folds_its_buttons_rather_than_cover_the_name() {
         assert!(super::controls_width(4.0, true) > super::controls_width(4.0, false));
-        assert!(super::header_fits(500.0, 4.0, 0.0));
-        assert!(!super::header_fits(360.0, 4.0, 0.0));
+        assert!(super::header_fits(500.0, 4.0, 0.0, true));
+        assert!(!super::header_fits(360.0, 4.0, 0.0, true));
         // Folded, More alone leaves the name room.
-        assert!(super::header_fits(280.0, 1.0, 0.0));
-        assert!(!super::header_fits(460.0, 4.0, 120.0));
+        assert!(super::header_fits(280.0, 1.0, 0.0, true));
+        assert!(!super::header_fits(460.0, 4.0, 120.0, true));
+    }
+
+    /// The plain header beside an info panel: four buttons take about 164
+    /// points there, and counting less slid the name under Search.
+    #[test]
+    fn a_plain_header_folds_its_buttons_beside_the_info_panel() {
+        assert!(!super::header_fits(353.0, 4.0, 0.0, false));
+        assert!(super::header_fits(353.0, 1.0, 0.0, false));
+        assert!(super::header_fits(500.0, 4.0, 0.0, false));
     }
 
     #[test]

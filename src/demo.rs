@@ -5122,7 +5122,7 @@ mod tests {
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
-                        egui::vec2(400.0, 780.0),
+                        egui::vec2(460.0, 780.0),
                     )),
                     events,
                     ..Default::default()
