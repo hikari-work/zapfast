@@ -222,6 +222,8 @@ name or description, in the interface language or in English.
 **System**
 
 - **Keep running when the window closes**: keep ZapFast linked in the tray.
+  With this off ZapFast has no tray or menu bar icon; an icon already there
+  leaves at the next start.
 - **Start at login**: start in the tray without a window, where the platform
   supports it. If the desktop's tray is not up yet, ZapFast waits up to 30
   seconds for it, then opens the window, since a desktop without a tray could

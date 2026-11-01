@@ -896,6 +896,10 @@ pub struct App {
     /// Cross-thread window repaint handle.
     waker: Waker,
     tray: Option<fastframe_tray::Tray>,
+    /// Whether this run may have a tray item at all (`AppOptions::tray`).
+    tray_allowed: bool,
+    /// The tray item could not be made while the setting wants one.
+    tray_failed: bool,
     /// Sleep and wake as the system reports them. Tests and demo runs get a
     /// fixed one that reads nothing from the machine.
     power: fastframe_power::Power,
@@ -1300,6 +1304,13 @@ fn tray_config(lockable: bool) -> fastframe_tray::Config {
     }
 }
 
+/// Whether the tray item should be made now. Turning the setting off leaves
+/// an item already made until the next start: fastframe-tray removes one only
+/// on Windows, and an item dropped elsewhere stays with a dead menu.
+fn wants_tray_item(allowed: bool, keep_running: bool, exists: bool) -> bool {
+    allowed && keep_running && !exists
+}
+
 /// Process-level app services.
 #[derive(Clone, Copy, Debug)]
 pub struct AppOptions {
@@ -1381,11 +1392,8 @@ impl App {
                 appearance_waker.wake()
             }));
         }
-        if options.tray {
-            let waker = waker.clone();
-            app.tray =
-                fastframe_tray::Tray::spawn(tray_config(app.tray_lockable), move || waker.wake());
-        }
+        app.tray_allowed = options.tray;
+        app.spawn_tray_if_wanted();
         // The clock preference may wait on the desktop portal on Linux; keep
         // it off the first frame.
         std::thread::Builder::new()
@@ -1702,6 +1710,8 @@ impl App {
             login_item: Default::default(),
             waker,
             tray: None,
+            tray_allowed: false,
+            tray_failed: false,
             power: fastframe_power::Power::fixed(Default::default()),
             #[cfg(target_os = "linux")]
             system_appearance: None,
@@ -2227,9 +2237,42 @@ impl App {
         self.has_focus = focused;
     }
 
+    /// Makes the tray item once "Keep running when the window closes" asks
+    /// for it: only then does it have a window to bring back (#457).
+    fn spawn_tray_if_wanted(&mut self) {
+        if !self.settings.keep_running_in_background {
+            self.tray_failed = false;
+        }
+        if self.tray_failed
+            || !wants_tray_item(
+                self.tray_allowed,
+                self.settings.keep_running_in_background,
+                self.tray.is_some(),
+            )
+        {
+            return;
+        }
+        let waker = self.waker.clone();
+        self.tray =
+            fastframe_tray::Tray::spawn(tray_config(self.tray_lockable), move || waker.wake());
+        // No session bus, say: asked again only if the setting is turned
+        // back on, not on every frame.
+        self.tray_failed = self.tray.is_none();
+    }
+
     /// Offers "Lock ZapFast" in the tray exactly while an app lock password
-    /// is set, so setting or removing one changes the menu at once.
+    /// is set, so setting or removing one changes the menu at once, and
+    /// makes the item when the setting that wants it is turned on.
     fn sync_tray(&mut self) {
+        if self.tray.is_none() {
+            self.spawn_tray_if_wanted();
+            if !self.window_hidden
+                && let Some(tray) = &mut self.tray
+            {
+                // Makes the macOS item, which needs a running window.
+                tray.attach();
+            }
+        }
         let lockable = self.settings.app_lock_hash.is_some();
         if lockable == self.tray_lockable {
             return;
@@ -15114,6 +15157,16 @@ mod tests {
         assert!(conversation.phone_exhausted);
         assert!(!conversation.complete);
         assert!(!conversation.fetching_phone);
+    }
+
+    #[test]
+    fn the_tray_item_follows_keep_running_in_the_background() {
+        assert!(super::wants_tray_item(true, true, false));
+        // Off: no item, and so no menu-bar or panel icon (#457).
+        assert!(!super::wants_tray_item(true, false, false));
+        // Tests and demos have none, and one item is enough.
+        assert!(!super::wants_tray_item(false, true, false));
+        assert!(!super::wants_tray_item(true, true, true));
     }
 
     #[test]
