@@ -7911,6 +7911,7 @@ fn content(
             status,
             duration,
             group,
+            participants,
         } => {
             let entry = super::calls::Entry {
                 from_me: own,
@@ -7918,6 +7919,7 @@ fn content(
                 status: *status,
                 duration: *duration,
                 group: *group,
+                participants: *participants,
             };
             let tint = if status.is_bad() {
                 palette.danger
