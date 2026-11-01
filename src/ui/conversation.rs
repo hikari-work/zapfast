@@ -4275,7 +4275,7 @@ fn reaction_affordance(
     }
     if response
         .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text("React")
+        .on_hover_text(crate::i18n::gettext(view.locale, "React"))
         .clicked()
     {
         actions.push(open_reaction_picker_action(
@@ -4304,7 +4304,7 @@ fn reaction_affordance(
     }
     if reply
         .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text("Reply")
+        .on_hover_text(crate::i18n::gettext(view.locale, "Reply"))
         .clicked()
     {
         actions.push(Action::Reply(message.id.clone()));
@@ -8624,7 +8624,7 @@ fn carousel_picture(
                     ui.painter().text(
                         rect.center() + vec2(0.0, 34.0),
                         Align2::CENTER_CENTER,
-                        "Download failed. Click to retry.",
+                        crate::i18n::gettext(view.locale, "Download failed. Click to retry."),
                         theme::regular(11.5),
                         Color32::WHITE,
                     );
@@ -8949,10 +8949,13 @@ fn interactive_buttons(
         } else {
             let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
             let response = match &button.action {
-                InteractiveAction::Reply => {
-                    response.on_hover_text(format!("Send reply: {}", button.label))
+                InteractiveAction::Reply => response.on_hover_text(
+                    crate::i18n::gettext(view.locale, "Send reply: {label}")
+                        .replace("{label}", &button.label),
+                ),
+                InteractiveAction::Copy(_) => {
+                    response.on_hover_text(crate::i18n::gettext(view.locale, "Copy code"))
                 }
-                InteractiveAction::Copy(_) => response.on_hover_text("Copy code"),
                 InteractiveAction::Select(_) | InteractiveAction::Unavailable => response,
             };
             if response.clicked()
@@ -9664,7 +9667,7 @@ fn picture(
                 ui.painter().text(
                     rect.center() + vec2(0.0, 34.0),
                     Align2::CENTER_CENTER,
-                    "Download failed. Click to retry.",
+                    crate::i18n::gettext(view.locale, "Download failed. Click to retry."),
                     theme::regular(11.5),
                     Color32::WHITE,
                 );
