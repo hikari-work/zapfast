@@ -2660,6 +2660,44 @@ fn album_id(message: &Message) -> Option<&str> {
     }
 }
 
+/// The fewest pictures in a row that draw as an album without being marked
+/// as one, as the phone groups them.
+const LOOSE_ALBUM_MIN: usize = 4;
+
+/// Whether a message can join a run of pictures no album id ties together:
+/// a plain photo, with nothing of its own to say beside the picture.
+fn loose_picture(message: &Message) -> bool {
+    matches!(
+        &message.content,
+        Content::Image { caption: None, media, .. } if media.album.is_none()
+    ) && message.quoted.is_none()
+}
+
+/// The run of at least [`LOOSE_ALBUM_MIN`] loose pictures holding `index`:
+/// consecutive, from one sender, on one day.
+fn loose_run(messages: &[Message], index: usize) -> Option<std::ops::Range<usize>> {
+    let message = messages
+        .get(index)
+        .filter(|message| loose_picture(message))?;
+    let joins = |other: &Message| {
+        loose_picture(other)
+            && other.from_me == message.from_me
+            && other.sender == message.sender
+            && crate::util::day_key(other.timestamp) == crate::util::day_key(message.timestamp)
+    };
+    let before = messages[..index]
+        .iter()
+        .rev()
+        .take_while(|m| joins(m))
+        .count();
+    let after = messages[index + 1..]
+        .iter()
+        .take_while(|m| joins(m))
+        .count();
+    let run = index - before..index + after + 1;
+    (run.len() >= LOOSE_ALBUM_MIN).then_some(run)
+}
+
 /// Whether the message at `index` is drawn in the album row of the one
 /// before it, as the list draws albums outside a selection: it then has no
 /// row of its own.
@@ -2668,6 +2706,9 @@ fn album_continues(messages: &[Message], index: usize) -> bool {
         return false;
     };
     let message = &messages[index];
+    if loose_run(messages, index).is_some_and(|run| run.start < index) {
+        return true;
+    }
     album_id(message).is_some()
         && album_id(previous) == album_id(message)
         && previous.from_me == message.from_me
@@ -2697,6 +2738,9 @@ pub fn row_of(starts: &[usize], index: usize) -> usize {
 /// A single marked item is rendered normally because there is nothing to group.
 fn album_run(messages: &[Message], start: usize) -> Option<&[Message]> {
     let first = messages.get(start)?;
+    if let Some(run) = loose_run(messages, start) {
+        return (run.start == start).then(|| &messages[run]);
+    }
     let album = album_id(first)?;
     let mut end = start + 1;
     while let Some(message) = messages.get(end) {
@@ -12073,6 +12117,28 @@ mod tests {
         assert_eq!(album_run(&messages, 0).map(<[Message]>::len), Some(2));
         assert_eq!(album_run(&messages, 2).map(<[Message]>::len), Some(2));
         assert!(album_run(&messages[1..3], 0).is_none());
+    }
+
+    /// The phone groups a run of pictures that carry no album id (#733).
+    #[test]
+    fn four_pictures_in_a_row_group_without_an_album_id() {
+        let mut messages: Vec<_> = ["one", "two", "three", "four", "five"]
+            .iter()
+            .map(|id| album_picture(id, None, "alice"))
+            .collect();
+        assert_eq!(album_run(&messages, 0).map(<[Message]>::len), Some(5));
+        assert!(album_run(&messages, 1).is_none(), "drawn with the first");
+        assert!(album_continues(&messages, 3));
+        assert!(!album_continues(&messages, 0));
+        assert_eq!(row_starts(&messages, false), [0]);
+        assert_eq!(row_starts(&messages, true).len(), 5);
+        // Three are not enough, and a caption stands alone.
+        assert!(album_run(&messages[..3], 0).is_none());
+        if let Content::Image { caption, .. } = &mut messages[2].content {
+            *caption = Some("Look".into());
+        }
+        assert!(album_run(&messages, 0).is_none());
+        assert_eq!(row_starts(&messages, false).len(), 5);
     }
 
     /// Checks that grouping never combines unrelated pictures or messages from different senders.

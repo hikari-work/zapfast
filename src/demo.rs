@@ -22846,7 +22846,9 @@ mod tests {
                     1_700_000_000 + index,
                     Content::Image {
                         motion: None,
-                        caption: None,
+                        // A caption keeps each on a row of its own, not in
+                        // one album with the others.
+                        caption: Some("Picture".into()),
                         media,
                     },
                 )

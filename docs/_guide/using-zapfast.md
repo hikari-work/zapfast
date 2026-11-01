@@ -326,7 +326,9 @@ parts of it. Opening the cropper again
 starts from your original with the crop you chose, so you can widen it back out
 without a second pass over the picture.
 
-Pictures and videos sent as a WhatsApp album appear together in a grid. Only
+Pictures and videos sent as a WhatsApp album appear together in a grid, and so
+do four or more photos in a row from one person on one day, without captions.
+Otherwise only
 items with the same protocol album identity, sender and local calendar date
 are grouped. A reply shared by several items appears once above the grid;
 different reply targets keep their own previews. If only some items carry
