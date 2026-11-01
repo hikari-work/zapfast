@@ -1028,6 +1028,8 @@ pub enum Command {
         /// one staged before it.
         turn: Option<SendTurn>,
     },
+    /// Phone numbers a group's metadata named, as (privacy id, number).
+    LearnNumbers(Vec<(String, String)>),
     /// Internal send audience. The sender waits for it to be archived.
     GroupRecipients {
         chat: ChatId,

@@ -3032,11 +3032,13 @@ impl App {
             return name;
         }
         // A name of digits alone is no name. When the id carries the number,
-        // neither is one as `util::phone` grouped it when the chat was filed:
-        // that is formatted afresh from the id.
+        // neither is one as `util::phone` grouped it when the chat was filed,
+        // nor as WhatsApp masks it (`+233∙∙∙∙∙∙42`) for someone not in the
+        // contacts: that is formatted afresh from the id.
         let phone = crate::model::phone_of(id);
         let number = |c: char| {
-            c.is_ascii_digit() || (phone.is_some() && matches!(c, '+' | ' ' | '(' | ')' | '-'))
+            c.is_ascii_digit()
+                || (phone.is_some() && matches!(c, '+' | ' ' | '(' | ')' | '-' | '\u{2219}'))
         };
         if let Some(chat) = chat.or_else(|| self.chat(id))
             && !chat.name.is_empty()
@@ -25449,6 +25451,21 @@ mod name_tests {
             },
         );
         app
+    }
+
+    /// WhatsApp masks the number of someone not in the contacts, and history
+    /// files that as the chat's name (#627, #408).
+    #[test]
+    fn a_masked_name_gives_way_to_the_number_the_id_carries() {
+        let mut app = app();
+        let masked = "+233\u{2219}\u{2219}\u{2219}\u{2219}\u{2219}\u{2219}42";
+        let known = "233201234542@s.whatsapp.net";
+        app.chats.push(Chat::new(known.into(), masked.into()));
+        assert_eq!(app.display_name(known), crate::util::phone("233201234542"));
+        // The number is all WhatsApp gave for a privacy id: the mask stays.
+        let hidden = "167650256810092@lid";
+        app.chats.push(Chat::new(hidden.into(), masked.into()));
+        assert_eq!(app.display_name(hidden), masked);
     }
 
     #[test]

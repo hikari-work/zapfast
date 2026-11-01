@@ -3776,6 +3776,10 @@ impl Worker {
                     let (participants, admin) =
                         new_group::group_members(&metadata.participants, &me, &lids);
                     let settings = group_admin::settings_of(&metadata, &lids);
+                    let numbers = new_group::known_numbers(&metadata.participants);
+                    if !numbers.is_empty() {
+                        let _ = commands.send(Command::LearnNumbers(numbers));
+                    }
                     let _ = commands.send(Command::GroupInfo {
                         leave_generation,
                         chat,
@@ -8639,6 +8643,11 @@ impl Worker {
             }
             Command::AvatarFailed { id, full } => {
                 *self.pending_avatars.entry((id, full)).or_insert(0) += 1;
+            }
+            Command::LearnNumbers(numbers) => {
+                for (lid, pn) in numbers {
+                    self.learn_lid(&lid, &pn);
+                }
             }
             Command::GroupRecipients {
                 chat,
