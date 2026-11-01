@@ -923,6 +923,12 @@ pub struct App {
     /// A hidden start whose tray item no panel shows yet waits until then
     /// for one to appear, and shows the window if none has (#429).
     tray_wait: Option<Instant>,
+    /// The last click on the Windows tray icon that did something.
+    tray_clicked: Option<Instant>,
+    /// Whether the window has the desktop's focus, as of the last frame.
+    has_focus: bool,
+    /// When the window last lost the focus.
+    focus_left: Option<Instant>,
     /// Whether this session draws through Wayland, where a compositor ignores
     /// a programmatic focus or unminimize request and the window is closed and
     /// reopened instead.
@@ -1241,9 +1247,22 @@ const TRAY_SHOW: &str = "show";
 const TRAY_LOCK: &str = "lock";
 const TRAY_QUIT: &str = "quit";
 
+/// Whether the tray's `Event::Show` is a click on the tray icon, which should
+/// toggle the window as Linux's left click does. Windows only: on macOS it is
+/// a Dock click, which only ever shows it.
+const TRAY_CLICK_TOGGLES: bool = cfg!(windows);
+/// Pressing the Windows tray icon takes the focus from the window before the
+/// release reports the click, so a window that lost it this recently counts
+/// as in front.
+const TRAY_FOCUS_GRACE: Duration = Duration::from_millis(600);
+/// Windows reports each release of a double-click, one on either side of a
+/// new window: the second one must not undo the first.
+const TRAY_DOUBLE_CLICK: Duration = Duration::from_millis(500);
+
 /// What a tray click asks for: a left click on Linux, or the menu's first
-/// entry, toggles the window; a left click on Windows and a Dock click on
-/// macOS show it. Clicking the macOS menu-bar icon opens its menu.
+/// entry, toggles the window, and a left click on Windows does through
+/// [`App::tray_click`]; a Dock click on macOS shows it. Clicking the macOS
+/// menu-bar icon opens its menu.
 fn tray_action(event: fastframe_tray::Event, window_hidden: bool) -> Option<Action> {
     use fastframe_tray::Event;
     Some(match event {
@@ -1695,6 +1714,9 @@ impl App {
             hide_intent: false,
             wants_show: false,
             tray_wait: None,
+            tray_clicked: None,
+            has_focus: false,
+            focus_left: None,
             wayland: wayland_session(),
             reopen: false,
             control_commands: None,
@@ -2161,11 +2183,48 @@ impl App {
             return;
         };
         let hidden = self.window_hidden;
-        self.actions.extend(
-            events
-                .into_iter()
-                .filter_map(|event| tray_action(event, hidden)),
-        );
+        for event in events {
+            let action = if TRAY_CLICK_TOGGLES && event == fastframe_tray::Event::Show {
+                self.tray_click(Instant::now())
+            } else {
+                tray_action(event, hidden)
+            };
+            self.actions.extend(action);
+        }
+    }
+
+    /// What a click on the Windows tray icon asks for: hide the window when
+    /// it is in front, or else bring it up (also when it is open behind
+    /// others). The second release of a double-click asks for nothing.
+    fn tray_click(&mut self, now: Instant) -> Option<Action> {
+        if self
+            .tray_clicked
+            .is_some_and(|clicked| now.duration_since(clicked) < TRAY_DOUBLE_CLICK)
+        {
+            return None;
+        }
+        self.tray_clicked = Some(now);
+        let lost_focus_just_now = self
+            .focus_left
+            .is_some_and(|left| now.duration_since(left) < TRAY_FOCUS_GRACE);
+        Some(
+            if !self.window_hidden && (self.has_focus || lost_focus_just_now) {
+                Action::HideWindow
+            } else {
+                Action::ShowWindow
+            },
+        )
+    }
+
+    /// Follows the window's own focus, which `window_focused` does not: that
+    /// one stays false behind the app lock.
+    fn track_focus(&mut self, ctx: &egui::Context, now: Instant) {
+        let focused =
+            !self.window_hidden && ctx.input(|input| input.viewport().focused) == Some(true);
+        if self.has_focus && !focused {
+            self.focus_left = Some(now);
+        }
+        self.has_focus = focused;
     }
 
     /// Offers "Lock ZapFast" in the tray exactly while an app lock password
@@ -9992,6 +10051,7 @@ impl App {
         }
         self.report_presence();
         self.handle_power();
+        self.track_focus(ctx, Instant::now());
         self.handle_tray();
         #[cfg(target_os = "macos")]
         self.actions.extend(crate::macos::drain(self.window_hidden));
@@ -15054,6 +15114,37 @@ mod tests {
         assert!(conversation.phone_exhausted);
         assert!(!conversation.complete);
         assert!(!conversation.fetching_phone);
+    }
+
+    #[test]
+    fn a_windows_tray_click_hides_a_window_in_front_and_shows_one_behind() {
+        let mut app = app();
+        let start = Instant::now();
+        let later = |millis| start + Duration::from_millis(millis);
+        // Open behind other windows: brought up.
+        assert!(matches!(app.tray_click(start), Some(Action::ShowWindow)));
+        // The second release of that click, on the window it just showed.
+        app.has_focus = true;
+        assert!(app.tray_click(later(200)).is_none());
+        // In front, with the press having taken the focus just before.
+        app.has_focus = false;
+        app.focus_left = Some(later(900));
+        assert!(matches!(
+            app.tray_click(later(1000)),
+            Some(Action::HideWindow)
+        ));
+        // Hidden meanwhile: however recently it had the focus, it comes back.
+        app.window_hidden = true;
+        assert!(matches!(
+            app.tray_click(later(1600)),
+            Some(Action::ShowWindow)
+        ));
+        // Left long ago for another window: brought up, not hidden.
+        app.window_hidden = false;
+        assert!(matches!(
+            app.tray_click(later(2600)),
+            Some(Action::ShowWindow)
+        ));
     }
 
     #[test]
