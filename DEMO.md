@@ -70,6 +70,8 @@ dialog with a spot pasted in. `typing`, `mention`, and
 `emoji-complete` preview the multiline field and inline suggestions.
 `mention-everyone` shows the group's synthetic `@all` message with the
 everyone suggestion at the top of the composer list.
+Use `--demo-page blocked` to preview a blocked conversation, `blocked-contacts`
+for the privacy list, or `block-confirm` for its confirmation.
 Use `--demo-page chat-menu` to preview the compact chat context menu,
 `--demo-page archive-failed` to simulate a failed archive request while
 keeping the chat open and showing the retry error,

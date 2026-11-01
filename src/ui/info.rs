@@ -31,6 +31,7 @@ const PHOTO_STOP: u8 = 0;
 const PENCIL_STOP: u8 = 1;
 const NAME_CHECK_STOP: u8 = 2;
 const ACTION_STOP: u8 = 3;
+const BLOCK_STOP: u8 = 9;
 pub const MEDIA_ROW_STOP: u8 = 10;
 const PERMISSIONS_STOP: u8 = 11;
 const ADD_MEMBERS_STOP: u8 = 12;
@@ -662,6 +663,7 @@ fn identity(app: &mut App, ui: &mut egui::Ui, shown: &Shown, overlay: bool) {
     }
     ui.add_space(4.0);
     actions(app, ui, shown, mine, editable);
+    ui.vertical_centered(|ui| super::blocking::button(app, ui, id, Stop::InfoControl(BLOCK_STOP)));
     let describing = app.group_description_edit.take().filter(|_| group_editable);
     if let Some(mut draft) = describing {
         ui.add_space(8.0);

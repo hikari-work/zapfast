@@ -39,6 +39,7 @@ use whatsapp_rust::waproto::buffa::Message as _;
 use whatsapp_rust::{MediaRetryResult, MediaReuploadRequest};
 
 mod archive_chats;
+mod blocking;
 mod bot_replies;
 mod calls;
 mod channel_pictures;
@@ -974,6 +975,7 @@ pub async fn run(
         privacy_warned: false,
         privacy_recovering: false,
         privacy_generation: 0,
+        blocklist: Default::default(),
         message_removals_in_flight: HashSet::new(),
         contact_generation: 0,
         privacy_retry: Instant::now(),
@@ -1438,6 +1440,7 @@ struct Worker {
     privacy_warned: bool,
     privacy_recovering: bool,
     privacy_generation: u64,
+    blocklist: crate::blocking::Blocklist,
     /// Serializes requests for one message, including across privacy-id mapping.
     message_removals_in_flight: HashSet<(ChatId, String)>,
     contact_generation: u64,
@@ -1956,7 +1959,9 @@ impl Worker {
         if !self.privacy_ready
             && matches!(
                 event,
-                Event::Chats(_)
+                Event::Blocklist { .. }
+                    | Event::BlocklistMapped { .. }
+                    | Event::Chats(_)
                     | Event::Drafts(_)
                     | Event::ChatHits { .. }
                     | Event::ChatUpdated(_)
@@ -2225,6 +2230,10 @@ impl Worker {
     }
 
     fn emit_chats(&mut self) {
+        self.emit_chats_mapped(None);
+    }
+
+    fn emit_chats_mapped(&mut self, mapping: Option<(ChatId, ChatId)>) {
         match self.archive.chats() {
             Ok(mut chats) => {
                 // Early preference sync can create an empty privacy-id row.
@@ -2234,7 +2243,15 @@ impl Worker {
                     self.polish_chat(chat);
                 }
                 self.prefetch.set_chats(&chats);
-                self.emit(Event::Chats(chats));
+                self.emit(match mapping {
+                    Some((from, to)) => Event::BlocklistMapped {
+                        from,
+                        to,
+                        chats,
+                        state: self.blocklist.clone(),
+                    },
+                    None => Event::Chats(chats),
+                });
                 self.emit_labels();
                 self.emit(Event::Drafts(self.archive.drafts().unwrap_or_default()));
             }
@@ -2385,8 +2402,21 @@ impl Worker {
                 // The phone may have history for us again.
                 self.prefetch.on_connected();
             }
+            // Dropping the link ends what was in flight. An idle list has
+            // nothing new to tell the window.
+            let mut blocks_changed = false;
+            if !status.is_connected() {
+                blocks_changed = self.blocklist.loading || self.blocklist.pending;
+                self.blocklist.invalidate();
+                if matches!(status, LinkStatus::LoggedOut) {
+                    blocks_changed |= self.blocklist.ids.take().is_some();
+                }
+            }
             self.status = status.clone();
             self.emit(Event::Link(status));
+            if blocks_changed {
+                self.publish_blocklist(None);
+            }
         }
     }
 
@@ -3354,6 +3384,7 @@ impl Worker {
         }
         self.privacy_ready = true;
         self.load_state();
+        self.publish_blocklist(None);
         self.emit(Event::Syncing(self.syncing));
         // A call that was withheld while the locks were unknown is re-sent now that they are: the
         // chat it belongs to can finally be judged private or not, so it rings against the right
@@ -3374,6 +3405,7 @@ impl Worker {
     }
 
     async fn stop_bot(&mut self) {
+        self.blocklist.invalidate();
         self.client = None;
         // A batch still going belongs to the session that was sending it, and
         // every send is its own task: one can report its tick after this
@@ -3412,11 +3444,20 @@ impl Worker {
             }
         };
         self.lid_to_pn.insert(lid.to_owned(), pn.to_owned());
-        if changed {
-            self.emit_chats();
-        }
         let chat = format!("{pn}@s.whatsapp.net");
         let lid_chat = format!("{lid}@lid");
+        let blocks_changed = self.blocklist.ids.as_mut().is_some_and(|ids| {
+            let removed = ids.remove(&lid_chat);
+            if removed {
+                ids.insert(chat.clone());
+            }
+            removed
+        });
+        if changed || blocks_changed {
+            // Separate events could expose either the old or the new id
+            // without its lock for one frame. Apply both snapshots together.
+            self.emit_chats_mapped(Some((lid_chat.clone(), chat.clone())));
+        }
         match self.archive.removed_message_ids(&chat) {
             Ok(ids) => {
                 for id in ids {
@@ -3561,8 +3602,8 @@ impl Worker {
         }
     }
 
-    /// App-state mutations may use a privacy id before a message teaches the UI
-    /// its mapping. Consult the protocol library's persisted mapping as well.
+    /// Server updates and the blocklist may name a privacy id before a message
+    /// teaches the UI its mapping. Consult the library's persisted mapping too.
     async fn canonical_sync_chat(&mut self, jid: &Jid) -> String {
         if jid.is_lid()
             && !self.lid_to_pn.contains_key(jid.user_base())
@@ -3570,8 +3611,8 @@ impl Worker {
         {
             match client.get_lid_pn_entry(jid).await {
                 Ok(Some(entry)) => self.learn_lid(&entry.lid, &entry.phone_number),
-                Ok(None) => log::info!("chat removal: privacy mapping not yet available"),
-                Err(_) => log::warn!("chat removal: could not resolve privacy mapping"),
+                Ok(None) => log::info!("privacy mapping not yet available"),
+                Err(_) => log::warn!("could not resolve privacy mapping"),
             }
         }
         self.canonical(jid)
@@ -4035,6 +4076,7 @@ impl Worker {
                 };
                 self.remember_identity(pn, lid, name);
                 self.set_status(LinkStatus::Connected);
+                self.fetch_blocklist();
                 self.retry_message_removals();
                 // A new connection may reach a phone that was away before.
                 self.older_warned.clear();
@@ -7094,6 +7136,13 @@ impl Worker {
                 .iter()
                 .find(|chat| !self.forward_writable(chat))
                 .or_else(|| to_chats.first()),
+            Command::React { chat, .. }
+            | Command::VotePoll { chat, .. }
+            | Command::EditText { chat, .. }
+            | Command::SendStickerPack { chat, .. }
+            | Command::StickerMade {
+                chat: Some(chat), ..
+            } if self.blocklist.contains(&self.canonical_str(chat)) => Some(chat),
             _ => None,
         };
         let writable = |chat: &str| match &command {
@@ -7103,6 +7152,10 @@ impl Worker {
         if let Some(chat) = destination
             && !writable(chat)
         {
+            if self.blocklist.contains(&self.canonical_str(chat)) {
+                self.refuse_blocked(command);
+                return;
+            }
             let error = "This conversation is read-only in ZapFast".to_owned();
             if matches!(&command, Command::CreatePoll { .. }) {
                 self.emit(Event::PollCreated {
@@ -7115,6 +7168,17 @@ impl Worker {
             return;
         }
         match command {
+            Command::FetchBlocklist => self.fetch_blocklist(),
+            Command::SetBlocked { chat, blocked } => self.set_blocked(chat, blocked),
+            Command::BlocklistFetched { generation, result } => {
+                self.blocklist_fetched(generation, result).await
+            }
+            Command::BlockedSet {
+                generation,
+                chat,
+                blocked,
+                result,
+            } => self.blocked_set(generation, chat, blocked, result),
             Command::StartCall {
                 chat,
                 video,
@@ -9694,6 +9758,7 @@ impl Worker {
     /// Rechecks the current privacy and chat state at the worker's send boundary.
     fn destination_writable(&self, chat: &str) -> bool {
         self.privacy_ready
+            && !self.blocklist.contains(&self.canonical_str(chat))
             && match self.archive.chat(chat) {
                 Ok(Some(chat)) => chat.can_send(),
                 Ok(None) => ChatKind::from_id(chat) != ChatKind::Broadcast,
@@ -19927,6 +19992,7 @@ mod receipt_tests {
             privacy_warned: false,
             privacy_recovering: false,
             privacy_generation: 0,
+            blocklist: Default::default(),
             message_removals_in_flight: HashSet::new(),
             contact_generation: 0,
             privacy_retry: Instant::now(),
@@ -23997,7 +24063,9 @@ mod receipt_tests {
     }
 
     /// Enumerates synthetic send commands and matching unsent payloads with a shared quote target.
-    fn reply_sends(quoting: Option<crate::model::ReplyTarget>) -> Vec<(Command, Unsent)> {
+    pub(super) fn reply_sends(
+        quoting: Option<crate::model::ReplyTarget>,
+    ) -> Vec<(Command, Unsent)> {
         let gif = Gif {
             id: "fixture-gif".into(),
             still: None,
