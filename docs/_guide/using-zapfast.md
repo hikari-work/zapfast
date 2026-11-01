@@ -638,6 +638,11 @@ word you type matches the start of a word in the name, in order: `will shak`
 finds William Shakespeare, and `j d` finds John Doe. A plain part of the name
 also works, such as `liam`.
 
+Connection and history-sync notices appear below the open chat’s header,
+leaving the chat list in place. In a narrow window showing only the list,
+the notice appears below the list header. Retry and update actions stay
+available in the notice.
+
 To message someone without saving their number, open **New chat**, choose
 **Add contact**, enter the number with its country code, leave the name blank,
 and choose **Message**. A leading `+`, spaces, hyphens and brackets are fine;
