@@ -902,6 +902,8 @@ pub struct App {
     tray_failed: bool,
     /// The unread level the tray icon shows (`util::tray_badge_level`).
     tray_badge: u32,
+    /// A new window asks for the focus with its first frame.
+    wants_focus: bool,
     /// When the panel's light or dark style was last read.
     tray_colour_checked: Option<Instant>,
     /// Sleep and wake as the system reports them. Tests and demo runs get a
@@ -1732,6 +1734,7 @@ impl App {
             tray_allowed: false,
             tray_failed: false,
             tray_badge: 0,
+            wants_focus: false,
             tray_colour_checked: None,
             power: fastframe_power::Power::fixed(Default::default()),
             #[cfg(target_os = "linux")]
@@ -2605,6 +2608,7 @@ impl App {
         }
         // A window is here, so a hidden start's wait for a panel is over.
         self.tray_wait = None;
+        self.wants_focus = true;
         // Register transcript copy formatting once per egui context.
         ctx.add_plugin(crate::transcript::CopyAnnotator {
             rows: std::sync::Arc::clone(&self.copy_rows),
@@ -11125,6 +11129,10 @@ impl App {
     pub fn frame_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let ctx = &ctx;
+        // Some window managers leave a new window behind the last app (#755).
+        if std::mem::take(&mut self.wants_focus) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
         self.settle_pending_reply();
         self.copy_rows
             .lock()

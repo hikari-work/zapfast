@@ -7033,6 +7033,27 @@ mod tests {
         assert_eq!(app.message_cursor.get(&chat), Some(&target));
     }
 
+    /// A new window asks for the focus once, on its first frame (#755).
+    #[test]
+    fn a_new_window_asks_for_the_focus_once() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.attach(&ctx);
+        let mut asks = || {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let ctx = ui.ctx().clone();
+                app.background_frame(&ctx);
+                app.frame_ui(ui);
+            });
+            output.textures_delta.clear();
+            output.viewport_output[&egui::ViewportId::ROOT]
+                .commands
+                .contains(&egui::ViewportCommand::Focus)
+        };
+        assert!(asks());
+        assert!(!asks());
+    }
+
     /// A clip playing on from another chat keeps a bar of controls there.
     #[test]
     fn the_voice_bar_draws_over_another_chat_and_goes_with_the_clip() {
