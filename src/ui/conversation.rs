@@ -374,6 +374,11 @@ const NAME_GLASS_SINGLE: f32 = 7.0;
 const NAME_GLASS_LINES: f32 = 32.0;
 /// How wide the round glass under each of a vibrant header's buttons is.
 const BUTTON_GLASS: f32 = 36.0;
+/// Space between the header's last button and caption buttons `room` wide.
+fn caption_gap(room: f32) -> f32 {
+    if room > 0.0 { 8.0 } else { 0.0 }
+}
+
 /// The space between two of a vibrant header's buttons, beyond their glass.
 const BUTTON_GAP: f32 = 10.0;
 /// What the chat header needs beside the caption buttons ZapFast draws: its
@@ -460,7 +465,8 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                     buttons * 36.0 + (buttons - 0.5) * BUTTON_GAP + (BUTTON_GLASS - 30.0)
                 } else {
                     buttons * 36.0
-                } + room.right;
+                } + room.right
+                    + caption_gap(room.right);
                 // On a vibrant window the name and the buttons sit on glass
                 // pills, drawn beneath them once they are measured.
                 let name_pill = ui.painter().add(egui::Shape::Noop);
@@ -617,7 +623,7 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                 };
                 let select_messages_label = crate::i18n::gettext(app.locale, "Select messages");
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.add_space(room.right);
+                    ui.add_space(room.right + caption_gap(room.right));
                     // Each button on a vibrant window floats on its own glass,
                     // with room around it.
                     if palette.vibrant() {
@@ -11600,6 +11606,12 @@ fn chat_of(chat: &ChatId) -> &str {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn more_stands_clear_of_drawn_caption_buttons_only() {
+        assert_eq!(super::caption_gap(0.0), 0.0);
+        assert!(super::caption_gap(120.0) > 0.0);
+    }
+
     use super::*;
 
     /// Each reason the keyboard menu speaks for an unavailable card button
