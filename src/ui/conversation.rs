@@ -374,6 +374,23 @@ const NAME_GLASS_SINGLE: f32 = 7.0;
 const NAME_GLASS_LINES: f32 = 32.0;
 /// How wide the round glass under each of a vibrant header's buttons is.
 const BUTTON_GLASS: f32 = 36.0;
+/// How wide `buttons` of the chat header are together.
+fn controls_width(buttons: f32, vibrant: bool) -> f32 {
+    if vibrant {
+        buttons * 36.0 + (buttons - 0.5) * BUTTON_GAP + (BUTTON_GLASS - 30.0)
+    } else {
+        buttons * 36.0
+    }
+}
+
+/// Whether a vibrant header `width` wide holds the avatar, a readable name
+/// and `buttons` and `extra` more on their right.
+fn header_fits(width: f32, buttons: f32, extra: f32) -> bool {
+    const AVATAR: f32 = 40.0 + 14.0;
+    const NAME: f32 = 140.0;
+    width >= AVATAR + NAME + controls_width(buttons, true) + extra
+}
+
 /// Space between the header's last button and caption buttons `room` wide.
 fn caption_gap(room: f32) -> f32 {
     if room > 0.0 { 8.0 } else { 0.0 }
@@ -460,13 +477,19 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                 } else {
                     0.0
                 };
+                let extra = room.right + caption_gap(room.right);
                 let buttons = if narrow { 3.0 } else { 2.0 } + call_buttons;
-                let right_controls = if palette.vibrant() {
-                    buttons * 36.0 + (buttons - 0.5) * BUTTON_GAP + (BUTTON_GLASS - 30.0)
+                // Vibrant glass takes so much room that Search and the call
+                // buttons go into More rather than push the name under them.
+                let folded = palette.vibrant()
+                    && !header_fits(ui.available_width(), buttons, extra)
+                    && !call_here;
+                let (buttons, call_buttons) = if folded {
+                    (buttons - call_buttons - 1.0, 0.0)
                 } else {
-                    buttons * 36.0
-                } + room.right
-                    + caption_gap(room.right);
+                    (buttons, call_buttons)
+                };
+                let right_controls = controls_width(buttons, palette.vibrant()) + extra;
                 // On a vibrant window the name and the buttons sit on glass
                 // pills, drawn beneath them once they are measured.
                 let name_pill = ui.painter().add(egui::Shape::Noop);
@@ -502,7 +525,7 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                                 // Room for the name's glass pill to clear the avatar.
                                 ui.add_space(if palette.vibrant() { 14.0 } else { 4.0 });
                                 ui.vertical(|ui| {
-                                    let width = (ui.available_width() - right_controls).max(80.0);
+                                    let width = ui.available_width().max(80.0);
                                     ui.set_max_width(width);
                                     // On glass the lines centre on the avatar: the
                                     // column starts at the row's top otherwise.
@@ -657,9 +680,15 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                     let clear_label = crate::i18n::gettext(app.locale, "Clear chat");
                     let copy_number_label = crate::i18n::gettext(app.locale, "Copy number");
                     let close_label = crate::i18n::gettext(app.locale, "Close chat");
+                    let search_label = crate::i18n::gettext(app.locale, "Search messages");
+                    let voice_call_label = crate::i18n::gettext(app.locale, "Voice call");
+                    let video_call_label = crate::i18n::gettext(app.locale, "Video call");
                     let width = widgets::menu_width(
                         ui,
                         &[
+                            search_label.as_ref(),
+                            voice_call_label.as_ref(),
+                            video_call_label.as_ref(),
                             info_label.as_ref(),
                             select_messages_label.as_ref(),
                             pin_label.as_ref(),
@@ -681,6 +710,39 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                         .width(width)
                         .frame(widgets::menu_frame(&palette))
                         .show(|ui| {
+                            if folded {
+                                if widgets::menu_item(
+                                    ui,
+                                    &palette,
+                                    Some(Icon::Search),
+                                    search_label.as_ref(),
+                                ) {
+                                    app.actions.push(if app.chat_search_open {
+                                        Action::CloseChatSearch
+                                    } else {
+                                        Action::OpenChatSearch
+                                    });
+                                }
+                                if callable(chat, app.me.as_deref()) {
+                                    if widgets::menu_item(
+                                        ui,
+                                        &palette,
+                                        Some(Icon::Phone),
+                                        voice_call_label.as_ref(),
+                                    ) {
+                                        app.actions.push(Action::StartCall(chat.id.clone()));
+                                    }
+                                    if widgets::menu_item(
+                                        ui,
+                                        &palette,
+                                        Some(Icon::Video),
+                                        video_call_label.as_ref(),
+                                    ) {
+                                        app.actions.push(Action::StartVideoCall(chat.id.clone()));
+                                    }
+                                }
+                                widgets::menu_separator(ui, &palette);
+                            }
                             if widgets::menu_item(
                                 ui,
                                 &palette,
@@ -835,38 +897,40 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                         }
                     }
                     let searching = app.chat_search_open;
-                    let tip = format!(
-                        "{} ({})",
-                        crate::i18n::gettext(app.locale, "Search messages"),
-                        super::keys::label("Ctrl+F")
-                    );
-                    if palette.vibrant() {
-                        ui.add_space(BUTTON_GAP);
-                    }
-                    let search_glass = ui.painter().add(egui::Shape::Noop);
-                    let search = theme::icon_button(
-                        ui,
-                        Icon::Search,
-                        18.0,
-                        if searching {
-                            palette.accent
-                        } else {
-                            palette.secondary
-                        },
-                        palette.text,
-                        &tip,
-                    )
-                    .tab_stop(Stop::ChatSearch);
-                    if palette.vibrant() {
-                        ui.painter()
-                            .set(search_glass, glass_button(&palette, search.rect));
-                    }
-                    if search.clicked() {
-                        app.actions.push(if searching {
-                            Action::CloseChatSearch
-                        } else {
-                            Action::OpenChatSearch
-                        });
+                    if !folded {
+                        let tip = format!(
+                            "{} ({})",
+                            crate::i18n::gettext(app.locale, "Search messages"),
+                            super::keys::label("Ctrl+F")
+                        );
+                        if palette.vibrant() {
+                            ui.add_space(BUTTON_GAP);
+                        }
+                        let search_glass = ui.painter().add(egui::Shape::Noop);
+                        let search = theme::icon_button(
+                            ui,
+                            Icon::Search,
+                            18.0,
+                            if searching {
+                                palette.accent
+                            } else {
+                                palette.secondary
+                            },
+                            palette.text,
+                            &tip,
+                        )
+                        .tab_stop(Stop::ChatSearch);
+                        if palette.vibrant() {
+                            ui.painter()
+                                .set(search_glass, glass_button(&palette, search.rect));
+                        }
+                        if search.clicked() {
+                            app.actions.push(if searching {
+                                Action::CloseChatSearch
+                            } else {
+                                Action::OpenChatSearch
+                            });
+                        }
                     }
                     // A narrow window shows the list or the chat, not both;
                     // this is the way back to the list.
@@ -11606,6 +11670,17 @@ fn chat_of(chat: &ChatId) -> &str {
 
 #[cfg(test)]
 mod tests {
+    /// Glass buttons leave the name no room in a narrow header (#626).
+    #[test]
+    fn a_vibrant_header_folds_its_buttons_rather_than_cover_the_name() {
+        assert!(super::controls_width(4.0, true) > super::controls_width(4.0, false));
+        assert!(super::header_fits(500.0, 4.0, 0.0));
+        assert!(!super::header_fits(360.0, 4.0, 0.0));
+        // Folded, More alone leaves the name room.
+        assert!(super::header_fits(280.0, 1.0, 0.0));
+        assert!(!super::header_fits(460.0, 4.0, 120.0));
+    }
+
     #[test]
     fn more_stands_clear_of_drawn_caption_buttons_only() {
         assert_eq!(super::caption_gap(0.0), 0.0);
