@@ -97,24 +97,35 @@ pub fn bar(app: &mut App, ui: &mut egui::Ui) -> bool {
     let mut add = false;
     egui::Panel::bottom("attachment-review-strip")
         .show_separator_line(false)
+        .resizable(false)
+        .exact_size(TILE + 12.0)
         .frame(
             Frame::new()
                 .fill(palette.surface)
-                .inner_margin(Margin::same(10)),
+                // In line with the caption field above it.
+                .inner_margin(Margin {
+                    left: 8,
+                    right: 8,
+                    top: 2,
+                    bottom: 10,
+                }),
         )
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
+            // Rows as tall as a tile: a shorter centred row pushes tiles down
+            // and off the bottom of the panel.
+            let row = vec2(ui.available_width(), TILE);
+            ui.allocate_ui_with_layout(row, Layout::left_to_right(Align::Center), |ui| {
                 let width = (ui.available_width() - 60.0).max(0.0);
                 ui.allocate_ui_with_layout(
-                    vec2(width, 72.0),
+                    vec2(width, TILE),
                     Layout::left_to_right(Align::Center),
                     |ui| {
                         egui::ScrollArea::horizontal()
                             .id_salt("pending-files")
-                            .max_height(72.0)
+                            .max_height(TILE)
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
-                                ui.horizontal(|ui| {
+                                ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
                                     for (index, item) in app.pending.iter_mut().enumerate() {
                                         let (clicked, removed) = tile(
                                             ui,
@@ -132,9 +143,7 @@ pub fn bar(app: &mut App, ui: &mut egui::Ui) -> bool {
                                             });
                                         }
                                     }
-                                    let button = ui
-                                        .add_sized(Vec2::splat(TILE), egui::Button::new("+"))
-                                        .tab_stop(Stop::ReviewAdd);
+                                    let button = add_tile(ui, &palette);
                                     button.widget_info(|| {
                                         egui::WidgetInfo::labeled(
                                             egui::WidgetType::Button,
@@ -172,6 +181,39 @@ pub fn bar(app: &mut App, ui: &mut egui::Ui) -> bool {
         app.actions.push(Action::Attach { documents: false });
     }
     send
+}
+
+/// The tile after the files, the same size, that adds another.
+fn add_tile(ui: &mut egui::Ui, palette: &theme::Palette) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(TILE), Sense::click());
+    let response = response.tab_stop(Stop::ReviewAdd);
+    theme::reveal_focus(&response);
+    if ui.is_rect_visible(rect) {
+        let hovered = response.hovered() || response.has_focus();
+        ui.painter().rect(
+            rect,
+            6.0,
+            if hovered {
+                palette.surface_hover
+            } else {
+                egui::Color32::TRANSPARENT
+            },
+            Stroke::new(1.0, palette.secondary.gamma_multiply(0.5)),
+            egui::StrokeKind::Inside,
+        );
+        theme::paint_icon(
+            ui,
+            Icon::Plus,
+            Rect::from_center_size(rect.center(), Vec2::splat(22.0)),
+            22.0,
+            if hovered {
+                palette.text
+            } else {
+                palette.secondary
+            },
+        );
+    }
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// A visible tile selects its file; its corner button removes only that file.
@@ -259,8 +301,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let mut close = false;
     ui.painter()
         .rect_filled(ui.available_rect_before_wrap(), 0.0, palette.surface);
+    ui.add_space(6.0);
     ui.horizontal(|ui| {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.add_space(8.0);
             close = theme::icon_button(
                 ui,
                 Icon::X,
