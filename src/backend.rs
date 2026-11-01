@@ -1632,7 +1632,8 @@ pub enum Refusal {
     /// There is no WhatsApp connection.
     Offline,
     /// The message being replied to cannot be quoted, because its row or its
-    /// original protobuf is missing, unreadable, or deleted. Sending anyway
+    /// original protobuf is missing, unreadable, or deleted (a view-once
+    /// message is quoted from its row, without one). Sending anyway
     /// would deliver the reply without its quote.
     QuoteUnavailable,
     /// View-once sends must be one photo, not a document or batch.

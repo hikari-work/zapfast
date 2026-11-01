@@ -274,7 +274,8 @@ With exactly one supported photo (JPEG, PNG, or WebP) staged, select
 the **View once** icon (a 1 inside a dashed circle) beside the caption. It lights
 up when enabled, and sends the photo as a WhatsApp view-once message. You can still
 add a caption. The sent message appears as a view-once placeholder in ZapFast;
-the recipient opens it on their phone. This option is not available for
+the recipient opens it on their phone. You can reply to a view-once message
+like any other. This option is not available for
 documents or batches of attachments.
 If you add more attachments, or a refused send returns to a draft with other
 attachments, remove the extras or turn off **View once** before sending.

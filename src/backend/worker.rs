@@ -8986,7 +8986,8 @@ impl Worker {
 
     /// Resolves the message a send replies to. A reply whose original cannot
     /// be quoted is refused rather than sent as an unrelated message: the
-    /// quote needs the original's archived row and its raw protobuf.
+    /// quote needs the original's archived row and its raw protobuf. A
+    /// view-once message has none, so its quote is built from the row.
     fn quote_target(
         &self,
         chat: &str,
@@ -9009,12 +9010,19 @@ impl Worker {
         if matches!(row.content, Content::Revoked) {
             return Err(unavailable);
         }
-        let raw = self
-            .archive
-            .raw(source, id)
-            .map_err(|_| unavailable)?
-            .ok_or(unavailable)?;
-        let original = wa::Message::decode_from_slice(&raw).map_err(|_| unavailable)?;
+        let raw = self.archive.raw(source, id).map_err(|_| unavailable)?;
+        let original = match (raw, &row.content) {
+            (Some(raw), _) => wa::Message::decode_from_slice(&raw).map_err(|_| unavailable)?,
+            (
+                None,
+                Content::PhoneOnly {
+                    view_once: true,
+                    once,
+                    ..
+                },
+            ) => quoted_view_once(*once),
+            (None, _) => return Err(unavailable),
+        };
         let jid = Self::jid_of(chat).ok_or(unavailable)?;
         let source_jid = Self::jid_of(source).ok_or(unavailable)?;
         let sender = Self::jid_of(&row.sender).ok_or(unavailable)?;
@@ -13454,6 +13462,39 @@ async fn quoted_outbound(
     let (mut row, raw) = file_outbound(client, chat, me, dir, prepared, caption, mentions).await?;
     row.quoted = shown;
     Ok((row, raw))
+}
+
+/// What a reply quotes of a view-once message, whose body this device never
+/// had: an empty view-once message of its kind, so that WhatsApp draws the
+/// quote as it draws one made on the phone. Nothing says which kind a bare
+/// placeholder was, so its quote is a photo's, the commonest.
+fn quoted_view_once(kind: Option<crate::model::OnceMedia>) -> wa::Message {
+    use crate::model::OnceMedia;
+    use whatsapp_rust::prelude::MessageField;
+    let mut inner = wa::Message::default();
+    match kind {
+        Some(OnceMedia::Video) => {
+            let mut video = wa::message::VideoMessage::default();
+            video.view_once = Some(true);
+            inner.video_message = MessageField::some(video);
+        }
+        Some(kind @ (OnceMedia::Voice | OnceMedia::Audio)) => {
+            let mut audio = wa::message::AudioMessage::default();
+            audio.view_once = Some(true);
+            audio.ptt = Some(kind == OnceMedia::Voice);
+            inner.audio_message = MessageField::some(audio);
+        }
+        Some(OnceMedia::Photo) | None => {
+            let mut image = wa::message::ImageMessage::default();
+            image.view_once = Some(true);
+            inner.image_message = MessageField::some(image);
+        }
+    }
+    let mut wrapper = wa::message::FutureProofMessage::default();
+    wrapper.message = MessageField::some(inner);
+    let mut message = wa::Message::default();
+    message.view_once_message_v2 = MessageField::some(wrapper);
+    message
 }
 
 /// Puts a reply's quote on an outgoing message, returning what the reply's
@@ -23213,7 +23254,8 @@ mod receipt_tests {
         assert!(worker.quote(PEER, None).unwrap().is_none());
         assert_eq!(worker.quote(PEER, Some("")).map(|_| ()), unavailable);
         assert_eq!(worker.quote(PEER, Some("missing")).map(|_| ()), unavailable);
-        // A row without its raw protobuf cannot be quoted.
+        // A row without its raw protobuf cannot be quoted, unless it is a
+        // view-once message (`a_view_once_message_is_quoted_from_its_row`).
         let mut row = own_message("original", 100);
         worker.archive.insert_message(&row, None).unwrap();
         assert_eq!(
@@ -23540,6 +23582,61 @@ mod receipt_tests {
                 Unsent::Gif,
             ),
         ]
+    }
+
+    /// View-once messages are archived without their raw protobuf (#563).
+    #[test]
+    fn a_view_once_message_is_quoted_from_its_row() {
+        use crate::model::OnceMedia;
+        let (worker, _, _, _) = worker();
+        worker.archive.ensure_chat(PEER, "Fixture").unwrap();
+        for (id, once, summary) in [
+            ("photo", Some(OnceMedia::Photo), "View once photo"),
+            ("video", Some(OnceMedia::Video), "View once video"),
+            ("voice", Some(OnceMedia::Voice), "View once voice message"),
+            ("bare", None, "View once message"),
+        ] {
+            let mut row = own_message(id, 100);
+            row.content = Content::PhoneOnly {
+                view_once: true,
+                live_location: false,
+                once,
+            };
+            worker.archive.insert_message(&row, None).unwrap();
+            let (context, shown) = worker.quote(PEER, Some(id)).unwrap().unwrap();
+            assert_eq!(context.stanza_id.as_deref(), Some(id));
+            assert_eq!(shown.id, id);
+            assert_eq!(shown.summary, summary);
+            let quoted = context.quoted_message.as_option().expect("a quoted body");
+            assert!(quoted.is_view_once(), "{id}");
+            let inner = quoted
+                .view_once_message_v2
+                .as_option()
+                .and_then(|wrapper| wrapper.message.as_option())
+                .expect("the wrapped kind");
+            assert_eq!(
+                inner.video_message.is_set(),
+                once == Some(OnceMedia::Video),
+                "{id}"
+            );
+            assert_eq!(
+                inner.audio_message.is_set(),
+                once == Some(OnceMedia::Voice),
+                "{id}"
+            );
+        }
+        // Another placeholder without a protobuf stays refused.
+        let mut row = own_message("phone-only", 100);
+        row.content = Content::PhoneOnly {
+            view_once: false,
+            live_location: false,
+            once: None,
+        };
+        worker.archive.insert_message(&row, None).unwrap();
+        assert_eq!(
+            worker.quote(PEER, Some("phone-only")).map(|_| ()),
+            Err(Refusal::QuoteUnavailable)
+        );
     }
 
     /// Checks that every send path refuses missing originals instead of sending an unquoted reply.
