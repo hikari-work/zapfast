@@ -10315,6 +10315,15 @@ impl Worker {
             self.emit(Event::Avatar { id, full, path });
             return;
         }
+        // An older picture shows at once, and through a lookup that fails:
+        // the initials are for people without one (#661).
+        if let Some(path) = last_avatar(&path) {
+            self.emit(Event::Avatar {
+                id: id.clone(),
+                full,
+                path: Some(path),
+            });
+        }
         if id.ends_with("@newsletter") {
             self.fetch_channel_avatar(id, full);
             return;
@@ -10330,11 +10339,8 @@ impl Worker {
             Self::jid_of(&id).into_iter().collect()
         };
         if candidates.is_empty() {
-            self.emit(Event::Avatar {
-                id,
-                full,
-                path: None,
-            });
+            let path = last_avatar(&path);
+            self.emit(Event::Avatar { id, full, path });
             return;
         }
         let connected = self
@@ -10420,11 +10426,8 @@ impl Worker {
                 .remove(&(id.clone(), full))
                 .unwrap_or(0);
             if attempts >= 3 {
-                self.emit(Event::Avatar {
-                    id,
-                    full,
-                    path: None,
-                });
+                let path = last_avatar(&self.avatar_file(&id, full));
+                self.emit(Event::Avatar { id, full, path });
                 continue;
             }
             self.fetch_avatar(id, full);
@@ -12754,6 +12757,14 @@ fn encode_jpeg(image: &image::DynamicImage, quality: u8) -> Result<Vec<u8>, Stri
 }
 
 /// Downloads a picture through the proxy settings into the avatar cache.
+/// The picture already on disk, however old. An empty file stands for a
+/// person known to have none.
+fn last_avatar(path: &Path) -> Option<PathBuf> {
+    std::fs::metadata(path)
+        .is_ok_and(|metadata| metadata.len() > 0)
+        .then(|| path.to_path_buf())
+}
+
 async fn download_avatar(url: String, path: PathBuf) -> Result<PathBuf, String> {
     let bytes = tokio::task::spawn_blocking(move || {
         crate::proxy::agent()
@@ -23591,6 +23602,40 @@ mod receipt_tests {
                 Unsent::Gif,
             ),
         ]
+    }
+
+    /// A picture past its freshness shows while it is looked up again, and
+    /// stays for a lookup that cannot run.
+    #[test]
+    fn an_old_avatar_shows_before_its_lookup() {
+        let (mut worker, events, _, _) = worker();
+        let path = worker.avatar_file(PEER, false);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"picture").unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(std::time::SystemTime::now() - AVATAR_FRESH * 2)
+            .unwrap();
+        worker.fetch_avatar(PEER.to_owned(), false);
+        let shown: Vec<_> = events
+            .try_iter()
+            .filter_map(|event| match event {
+                Event::Avatar { path, .. } => Some(path),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(shown, [Some(path.clone())]);
+        // Offline: the lookup waits, and the picture is not taken back.
+        assert!(
+            worker
+                .pending_avatars
+                .contains_key(&(PEER.to_owned(), false))
+        );
+        // An empty file says there is no picture, old or not.
+        std::fs::write(&path, b"").unwrap();
+        assert_eq!(last_avatar(&path), None);
     }
 
     /// View-once messages are archived without their raw protobuf (#563).
