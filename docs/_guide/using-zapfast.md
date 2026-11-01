@@ -53,6 +53,19 @@ page keeps the earlier results and offers **Retry**; pressing Enter with the
 same search also retries that page. GIF search results play when they come into
 view and pause when they scroll away.
 
+When you write a new text message with a web link and pause, ZapFast fetches
+that page, and its picture from wherever the page says it is, directly, through
+your proxy if one is set, and shows a preview card above the message box, for the first link. Edits
+and captions get no card. The card is sent with the message. ZapFast identifies
+itself to the site as ZapFast, and some sites give no preview to apps they do
+not recognise, in which case the message goes out with a plain link. ZapFast
+never looks up or contacts addresses on this computer or your local network
+itself, and refuses links that name one outright. With a proxy set, the proxy
+looks up the name instead. Click the cross on the card to send the link without
+a preview. If your phone has **Privacy > Advanced > Disable link previews** on,
+ZapFast makes no previews either, and it makes none until it has read that
+setting from your phone.
+
 Right-click a message to reply, react with any emoji, edit, forward, delete, or
 check when it was sent, delivered, and read. The reaction row has a **+** that
 opens the full emoji picker. Hover over a reaction to see who added it; in
