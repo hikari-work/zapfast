@@ -3754,10 +3754,13 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                 app.gif_next_offset = (part == "gifs-more").then_some(24);
                 app.picker = Some(crate::model::PickerTab::Gifs);
                 app.settings.giphy_key = "demo".into();
+                let (still, animated) = sample_files(app);
                 app.gif_results = (0..6)
                     .map(|index| crate::model::Gif {
                         id: format!("demo{index}"),
-                        still: Some(sample_files(app).0),
+                        still: Some(still.clone()),
+                        animated: Some(animated.clone()),
+                        animated_source: None,
                         mp4: String::new(),
                         width: 200,
                         height: if index % 2 == 0 { 150 } else { 200 },
@@ -13738,6 +13741,26 @@ mod tests {
                 assert_eq!(app.composer, "Hi *👋 café*!");
             }
         }
+    }
+
+    /// The GIF tab is the only caller of its animation cache, so closing the
+    /// picker has to empty it: no sweep would run for it again.
+    #[test]
+    fn closing_the_picker_releases_the_gif_animations() {
+        let scope = crate::ui::picker::gif_animations();
+        let held = |ctx: &egui::Context, seed| crate::animation::resident(ctx, scope, seed);
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.attach(&ctx);
+        apply_flags(&mut app, Some("gifs"));
+        app.picker = Some(crate::model::PickerTab::Gifs);
+        render(&mut app, &ctx);
+        let before = held(&ctx, Some(std::path::Path::new("tile.webp")));
+        render(&mut app, &ctx);
+        assert_eq!(held(&ctx, None), before, "an open tab keeps its tiles");
+        app.picker = None;
+        render(&mut app, &ctx);
+        assert_eq!(held(&ctx, None), 0);
     }
 
     #[test]

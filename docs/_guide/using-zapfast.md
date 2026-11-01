@@ -50,7 +50,8 @@ the oldest unread mention. The smiley opens emoji
 including the stickers used on the phone. GIF searches and trending results
 load 24 at a time; **Load more** below the grid fetches the next page. A failed
 page keeps the earlier results and offers **Retry**; pressing Enter with the
-same search also retries that page.
+same search also retries that page. GIF search results play when they come into
+view and pause when they scroll away.
 
 Right-click a message to reply, react with any emoji, edit, forward, delete, or
 check when it was sent, delivered, and read. The reaction row has a **+** that

@@ -43,6 +43,27 @@ pub(crate) fn reaction_area_id() -> egui::Id {
     egui::Id::new("reaction-picker")
 }
 
+/// The animation cache of the GIF tab's playing tiles.
+pub(crate) fn gif_animations() -> egui::Id {
+    egui::Id::new("gif-picker")
+}
+
+/// Whether the GIF tab is what the picker draws this pass.
+fn gif_tab_shown(app: &App) -> bool {
+    app.picker == Some(PickerTab::Gifs)
+        && app.reaction_target.is_none()
+        && !app.app_lock.is_locked()
+}
+
+/// Frees the GIF tab's animations once it is not drawn. The tab is their only
+/// caller, so they would never reach another idle sweep. Called before the
+/// lock screen's early return, since a locked app draws no picker either.
+pub fn release_gif_animations(app: &App, ctx: &egui::Context) {
+    if !gif_tab_shown(app) {
+        crate::animation::release(ctx, gif_animations());
+    }
+}
+
 pub fn show(app: &mut App, ctx: &egui::Context) {
     if app.picker == Some(PickerTab::Emoji) && app.reaction_target.is_none() {
         if app.picker_recent.is_none() {
@@ -1073,7 +1094,41 @@ fn gif_tab(app: &mut App, ui: &mut egui::Ui, palette: &Palette) {
                         let (rect, response) = ui.allocate_exact_size(size, Sense::click());
                         if ui.is_rect_visible(rect) {
                             ui.painter().rect_filled(rect, 6.0, palette.surface);
-                            if let Some(still) = &gif.still {
+                            if !app.gif_pending
+                                && gif.animated.is_none()
+                                && !app.gif_requested.contains(&gif.id)
+                                && let Some((url, extension)) = &gif.animated_source
+                            {
+                                app.actions.push(Action::FetchGifAnimation {
+                                    id: gif.id.clone(),
+                                    url: url.clone(),
+                                    extension: extension.clone(),
+                                });
+                            }
+                            // Visible tiles play; the animation player pauses
+                            // tiles that are off screen. The still stays
+                            // underneath while a preview decodes or fails.
+                            let playing = gif.animated.as_ref().and_then(|path| {
+                                match crate::animation::frame_with_cache(
+                                    ui,
+                                    path,
+                                    rect,
+                                    true,
+                                    gif_animations(),
+                                ) {
+                                    crate::animation::Frame::Ready(texture) => Some(texture),
+                                    _ => None,
+                                }
+                            });
+                            if let Some(texture) = playing {
+                                egui::Image::from_texture(egui::load::SizedTexture::new(
+                                    texture.id(),
+                                    texture.size_vec2(),
+                                ))
+                                .fit_to_exact_size(size)
+                                .corner_radius(6.0)
+                                .paint_at(ui, rect);
+                            } else if let Some(still) = &gif.still {
                                 widgets::file_image(ui, still)
                                     .fit_to_exact_size(size)
                                     .corner_radius(6.0)

@@ -2263,6 +2263,11 @@ pub struct Gif {
     pub id: String,
     /// Downloaded still-frame path.
     pub still: Option<PathBuf>,
+    /// Downloaded animated thumbnail shown while the tile is visible.
+    pub animated: Option<PathBuf>,
+    /// URL and file extension of the animated thumbnail, downloaded when the
+    /// tile first shows.
+    pub animated_source: Option<(String, String)>,
     pub mp4: String,
     pub width: u32,
     pub height: u32,
@@ -2945,6 +2950,12 @@ pub enum Action {
         format: ComposerFormat,
         start: usize,
         end: usize,
+    },
+    /// Fetches one GIF result's animated preview when its tile shows.
+    FetchGifAnimation {
+        id: String,
+        url: String,
+        extension: String,
     },
     SendGif(Gif),
     React {
