@@ -160,8 +160,8 @@ name or description, in the interface language or in English.
 - **Fetch older history**: off by default, and set for
   each number. When on, ZapFast asks the phone for older messages without you
   scrolling: the open chat first, then pinned chats and the ten most recently
-  active ones (never channels). It sends at most one request every twenty
-  seconds, and only while no other history request is waiting. Each chat is
+  active ones (never channels). It sends at most one request every five
+  minutes, since each one wakes the phone, and only while no other history request is waiting. Each chat is
   asked for at most five pages each time ZapFast runs, and a chat the phone
   does not answer goes to the back of the queue. Unanswered requests back off
   for that chat only; other chats keep the normal twenty-second gap. After
