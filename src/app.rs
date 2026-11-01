@@ -900,6 +900,8 @@ pub struct App {
     tray_allowed: bool,
     /// The tray item could not be made while the setting wants one.
     tray_failed: bool,
+    /// The unread level the tray icon shows (`util::tray_badge_level`).
+    tray_badge: u32,
     /// Sleep and wake as the system reports them. Tests and demo runs get a
     /// fixed one that reads nothing from the machine.
     power: fastframe_power::Power,
@@ -1292,9 +1294,9 @@ fn tray_config(lockable: bool) -> fastframe_tray::Config {
         title: "ZapFast".into(),
         icon: crate::util::app_icon_rgba,
         template_icon: Some(crate::util::tray_template_rgba),
-        // The tray icon is the app icon, so hosts that draw only named icons
-        // may use the installed one.
-        themed_icon: true,
+        // The icon changes with the unread count, which a host that has the
+        // installed icon's name would draw instead.
+        themed_icon: false,
         menu: vec![
             MenuItem::action(TRAY_SHOW, "Show or hide ZapFast"),
             MenuItem::action(TRAY_LOCK, "Lock ZapFast").visible(lockable),
@@ -1712,6 +1714,7 @@ impl App {
             tray: None,
             tray_allowed: false,
             tray_failed: false,
+            tray_badge: 0,
             power: fastframe_power::Power::fixed(Default::default()),
             #[cfg(target_os = "linux")]
             system_appearance: None,
@@ -2258,6 +2261,7 @@ impl App {
         // No session bus, say: asked again only if the setting is turned
         // back on, not on every frame.
         self.tray_failed = self.tray.is_none();
+        self.tray_badge = 0;
     }
 
     /// Offers "Lock ZapFast" in the tray exactly while an app lock password
@@ -2274,12 +2278,21 @@ impl App {
             }
         }
         let lockable = self.settings.app_lock_hash.is_some();
-        if lockable == self.tray_lockable {
-            return;
+        if lockable != self.tray_lockable {
+            self.tray_lockable = lockable;
+            if let Some(tray) = &mut self.tray {
+                tray.set_visible(TRAY_LOCK, lockable);
+            }
         }
-        self.tray_lockable = lockable;
-        if let Some(tray) = &mut self.tray {
-            tray.set_visible(TRAY_LOCK, lockable);
+        // The same count as the taskbar's; a new icon only when it shows.
+        let count = self.unread_chat_count_everywhere();
+        let level = crate::util::tray_badge_level(count);
+        if level != self.tray_badge
+            && let Some(tray) = &mut self.tray
+        {
+            let (icon, template) = crate::util::tray_icons(count);
+            tray.set_icon(icon, Some(template));
+            self.tray_badge = level;
         }
     }
 
