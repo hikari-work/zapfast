@@ -350,7 +350,7 @@ pub fn release(ctx: &egui::Context, scope: egui::Id) {
 }
 
 /// How many files a scope holds, with one placed there first when `seed`.
-#[cfg(all(test, feature = "demo"))]
+#[cfg(test)]
 pub(crate) fn resident(ctx: &egui::Context, scope: egui::Id, seed: Option<&Path>) -> usize {
     let cache = cache_for(ctx, scope);
     let mut animations = cache.0.lock().unwrap_or_else(|p| p.into_inner());
