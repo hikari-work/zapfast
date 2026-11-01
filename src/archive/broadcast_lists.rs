@@ -606,7 +606,7 @@ mod tests {
         let archive = Archive::in_memory().unwrap();
         list_with(&archive, &[received(LIST, "m", 100)]);
         archive.set_muted(LIST, Some(i64::MAX)).unwrap();
-        archive.set_archived(LIST, true).unwrap();
+        archive.set_archived_at(LIST, true, 1).unwrap();
         archive.set_pinned(LIST, true).unwrap();
         assert!(archive.set_favorite(LIST, true).unwrap());
         assert!(archive.pin(LIST, "m", 100, i64::MAX).unwrap());
