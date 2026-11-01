@@ -5151,8 +5151,18 @@ mod tests {
         );
         let phone = phone_links[0];
         let phone_last = *phone_links.last().unwrap();
-        let previous = crate::ui::focus::control(&ctx, crate::ui::focus::Stop::Emoji).unwrap();
-        let next = crate::ui::focus::control(&ctx, crate::ui::focus::Stop::ChatSearch).unwrap();
+        // The stops on either side, not named ones: how many header buttons
+        // fit this width differs by platform.
+        let order = crate::ui::focus::stops(&ctx)
+            .into_iter()
+            .map(|(_, id)| id)
+            .collect::<Vec<_>>();
+        let beside = |id: egui::Id, step: usize| {
+            let at = order.iter().position(|stop| *stop == id).unwrap();
+            order[(at + step) % order.len()]
+        };
+        let previous = beside(phone, order.len() - 1);
+        let next = beside(phone_last, 1);
         let open_menu = |app: &mut App, from: egui::Id, target: egui::Id, tab: egui::Modifiers| {
             ctx.memory_mut(|memory| memory.request_focus(from));
             run(app, vec![key(egui::Key::Tab, tab)]);
