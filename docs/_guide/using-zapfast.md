@@ -21,7 +21,12 @@ to make Enter add a line and send with Ctrl+Enter (Command+Enter on macOS).
 The emoji picker stays open while you choose emoji and closes when you send
 the text.
 `*bold*`, `_italic_`, `~strike~`, and ```` ```monospace ```` ```` format
-like WhatsApp, and a message of nothing but emoji shows large.
+like WhatsApp, and a message of nothing but emoji shows large. Select text in
+the composer and right-click (or press Shift+F10 while it is focused) for
+**Bold**, **Italic**, **Strikethrough**, or
+**Monospace**. Spaces at the edges of the selection stay outside the markers,
+and bold, italic and strikethrough mark each selected line. Formatting keeps
+the text selected and can be undone.
 A line beginning with `> ` (greater-than and a space) is a block quote.
 Without the space, text such as `>.<` stays literal.
 Paste text with Ctrl+V (Command+V on macOS) or Shift+Insert, as in other
