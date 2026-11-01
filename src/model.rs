@@ -1846,6 +1846,57 @@ pub enum MediaState {
     Failed(String),
 }
 
+/// The one ordering point between the reader's cancel and the worker's send.
+///
+/// The window cancels here directly rather than through a command, which
+/// would wait in the same queue as the message it is meant to stop. Exactly
+/// one side wins: a cancel means the message is never sent, and a commitment
+/// means it is, so the strip never leaves ahead of a message that still goes.
+#[derive(Clone, Debug, Default)]
+pub struct UploadGate(std::sync::Arc<std::sync::atomic::AtomicU8>);
+
+impl UploadGate {
+    const OPEN: u8 = 0;
+    const CANCELLED: u8 = 1;
+    const COMMITTED: u8 = 2;
+
+    fn settle(&self, outcome: u8) -> bool {
+        use std::sync::atomic::Ordering::{AcqRel, Acquire};
+        self.0
+            .compare_exchange(Self::OPEN, outcome, AcqRel, Acquire)
+            .is_ok()
+    }
+
+    /// Cancels the send, unless it was already committed. Returns whether it
+    /// is cancelled.
+    pub fn cancel(&self) -> bool {
+        self.settle(Self::CANCELLED) || self.is_cancelled()
+    }
+
+    /// Commits to the send, unless it was already cancelled. Returns whether
+    /// it may go out.
+    pub fn commit(&self) -> bool {
+        self.settle(Self::COMMITTED) || !self.is_cancelled()
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::Acquire) == Self::CANCELLED
+    }
+}
+
+/// A file going out, for the strip above its chat's composer. An empty name
+/// is a pasted picture.
+#[derive(Clone, Debug)]
+pub struct Upload {
+    pub id: u64,
+    pub gate: UploadGate,
+    pub chat: ChatId,
+    pub name: String,
+    pub percent: u8,
+    /// Roughly how long the rest takes, once the pace is known.
+    pub seconds_left: Option<u32>,
+}
+
 /// Decoded straight-alpha RGBA image bytes ready for the clipboard.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DecodedImage {
@@ -2847,6 +2898,8 @@ pub enum Action {
         message: String,
     },
     CancelReply,
+    /// Stops sending the file with this upload id.
+    CancelUpload(u64),
     /// Takes away the link preview above the composer, for its link only:
     /// the message goes without one.
     DismissLinkPreview,

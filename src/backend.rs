@@ -136,6 +136,8 @@ pub struct SendTurn {
     /// The linked session it was staged in: after a sign-out it is dropped,
     /// never archived or sent from the account linked next.
     pub generation: u64,
+    /// Settles this attachment's send against the reader's cancel.
+    pub gate: crate::model::UploadGate,
 }
 
 #[derive(Debug)]
@@ -1357,6 +1359,27 @@ pub enum Event {
         chat: ChatId,
         message: String,
         result: Result<PathBuf, String>,
+    },
+    /// How far an attachment download has got, for its ring.
+    DownloadProgress {
+        chat: ChatId,
+        message: String,
+        percent: u8,
+    },
+    /// How far a file being sent has gone out, for the strip above the
+    /// composer, and roughly how many seconds the rest takes. The first one,
+    /// at 0, comes before it is prepared.
+    UploadProgress {
+        id: u64,
+        gate: crate::model::UploadGate,
+        chat: ChatId,
+        name: String,
+        percent: u8,
+        seconds_left: Option<u32>,
+    },
+    /// The upload with this id is over, sent or not.
+    UploadEnded {
+        id: u64,
     },
     /// A motion photo's clip finished downloading, or failed.
     Motion {
