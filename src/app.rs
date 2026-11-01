@@ -99,6 +99,12 @@ impl ScrollRoute {
             .push((pane, rect));
     }
 
+    /// Whether a gesture that began over a pane is still under way, so a
+    /// wheel reaching something else only passes over it.
+    pub fn busy(&self) -> bool {
+        self.owner.is_some()
+    }
+
     /// The vertical scrolling taken for `pane` from over another place this
     /// frame, for the pane to apply with `Ui::scroll_with_delta`.
     pub fn take(&mut self, pane: ScrollPane) -> f32 {
@@ -904,6 +910,8 @@ pub struct App {
     tray_badge: u32,
     /// A new window asks for the focus with its first frame.
     wants_focus: bool,
+    /// When the wheel last switched account.
+    account_wheeled: Option<Instant>,
     /// When the panel's light or dark style was last read.
     tray_colour_checked: Option<Instant>,
     /// Sleep and wake as the system reports them. Tests and demo runs get a
@@ -1248,6 +1256,15 @@ impl fastframe_shell::Resident for App {
     fn shutdown(&mut self) {
         App::shutdown(self);
     }
+}
+
+/// The least time between two switches of account by the wheel.
+const ACCOUNT_WHEEL_REST: Duration = Duration::from_millis(250);
+
+/// The index `step` along from `active` among `len` accounts, wrapping round,
+/// when there is another account to go to.
+fn cycled(active: usize, len: usize, step: i8) -> Option<usize> {
+    (len > 1).then(|| (active + len).wrapping_add_signed(step.signum() as isize) % len)
 }
 
 /// How long a hidden start waits for a panel to show the tray item.
@@ -1735,6 +1752,7 @@ impl App {
             tray_failed: false,
             tray_badge: 0,
             wants_focus: false,
+            account_wheeled: None,
             tray_colour_checked: None,
             power: fastframe_power::Power::fixed(Default::default()),
             #[cfg(target_os = "linux")]
@@ -1881,6 +1899,23 @@ impl App {
             self.pending_view_once = false;
         }
         self.focus_composer = self.open_chat.is_some();
+    }
+
+    /// Moves one account along, at most once per [`ACCOUNT_WHEEL_REST`]: one
+    /// turn of a wheel is several events, and a switch is heavy.
+    fn cycle_account(&mut self, step: i8, now: Instant) {
+        if self
+            .account_wheeled
+            .is_some_and(|at| now.duration_since(at) < ACCOUNT_WHEEL_REST)
+        {
+            return;
+        }
+        let Some(next) = cycled(self.active, self.accounts.len(), step) else {
+            return;
+        };
+        self.account_wheeled = Some(now);
+        let id = self.accounts[next].id.clone();
+        self.switch_account(&id);
     }
 
     fn switch_account(&mut self, id: &AccountId) {
@@ -9833,6 +9868,7 @@ impl App {
             // Route through the configured window-close behavior.
             Action::CloseWindow => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             Action::SwitchAccount(id) => self.switch_account(&id),
+            Action::CycleAccount(step) => self.cycle_account(step, Instant::now()),
             Action::AddAccount => self.add_account(),
             Action::CancelAddAccount => {
                 // Back to the account the window showed before; leaving an
@@ -12915,6 +12951,25 @@ mod tests {
             Some(second),
             "forward no longer reaches the chat the back step left"
         );
+    }
+
+    #[test]
+    fn the_wheel_steps_through_the_accounts_once_per_turn() {
+        assert_eq!(super::cycled(0, 1, 1), None);
+        assert_eq!(super::cycled(0, 3, 1), Some(1));
+        assert_eq!(super::cycled(2, 3, 1), Some(0));
+        assert_eq!(super::cycled(0, 3, -1), Some(2));
+        let directory = tempfile::tempdir().unwrap();
+        let (mut app, _commands) = two_accounts(directory.path());
+        let now = Instant::now();
+        let active = app.active;
+        app.cycle_account(1, now);
+        assert_ne!(app.active, active);
+        // The same turn's next event.
+        app.cycle_account(1, now + Duration::from_millis(50));
+        assert_ne!(app.active, active);
+        app.cycle_account(1, now + super::ACCOUNT_WHEEL_REST);
+        assert_eq!(app.active, active);
     }
 
     #[test]

@@ -3319,6 +3319,8 @@ pub enum Action {
     CloseWindow,
     /// Shows another linked account in the window.
     SwitchAccount(AccountId),
+    /// Moves to the next (`1`) or previous (`-1`) account, wrapping round.
+    CycleAccount(i8),
     /// Starts linking another number beside the ones already here.
     AddAccount,
     /// Leaves an account being added before it was linked.
