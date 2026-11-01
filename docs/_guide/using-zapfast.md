@@ -732,8 +732,8 @@ others. One stays listed while it is pinned, a favorite, labeled, unread,
 locked, open, or holds an unsent draft. Search still finds them, and the
 first message or call brings one into the list.
 When the chips do not fit the chat list's width, the row fades at its edge:
-scroll it with the mouse wheel or a touchpad, or drag the scroll bar that
-appears while the pointer is over the row. The label row scrolls the same way.
+scroll it with the mouse wheel or a touchpad. The label row scrolls the same
+way.
 
 Right-click a chat to pin, favorite, archive, mark as unread, or mute it for
 eight hours, one week, or indefinitely. These changes also apply on your
