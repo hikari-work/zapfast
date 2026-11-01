@@ -164,11 +164,11 @@ fn header(
 ) {
     let palette = app.palette;
     Frame::new()
-        .inner_margin(Margin::symmetric(14, 10))
+        .inner_margin(Margin::symmetric(14, 8))
         .show(ui, |ui| {
-            let room = pane::caption_header(ui, vec2(14.0, 10.0));
+            let room = pane::caption_header(ui, vec2(14.0, 8.0));
             ui.horizontal(|ui| {
-                ui.set_min_height(32.0);
+                ui.set_min_height(super::conversation::HEADER_ROW);
                 ui.add_space(room.left);
                 let button =
                     theme::icon_button(ui, icon, 18.0, palette.secondary, palette.text, label)
