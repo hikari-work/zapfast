@@ -930,7 +930,10 @@ launcher's right-click menu (KDE Plasma's task manager and application menu,
 GNOME's Dash). On every platform, `zapfast quit` in a terminal or a script quits
 the running copy the same way, and does nothing when none runs. A copy from
 before this command is left running, and the command says so and fails.
-The tray icon shows how many chats are unread, up to 9+. Launchers that support
+The tray icon shows how many chats are unread, up to 9+. It is white on a dark
+panel and black on a light one: on Windows it follows the taskbar, and on Linux
+the desktop's colour scheme (GNOME's top bar counts as dark). A Linux desktop
+that does not say keeps the green icon. Launchers that support
 the Unity Launcher API
 show the unread count as a badge on the app icon: KDE Plasma's taskbar, with
 **Show badges** enabled in the Task Manager settings, and GNOME's Dash to Dock

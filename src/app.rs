@@ -902,6 +902,8 @@ pub struct App {
     tray_failed: bool,
     /// The unread level the tray icon shows (`util::tray_badge_level`).
     tray_badge: u32,
+    /// When the panel's light or dark style was last read.
+    tray_colour_checked: Option<Instant>,
     /// Sleep and wake as the system reports them. Tests and demo runs get a
     /// fixed one that reads nothing from the machine.
     power: fastframe_power::Power,
@@ -1313,6 +1315,21 @@ fn wants_tray_item(allowed: bool, keep_running: bool, exists: bool) -> bool {
     allowed && keep_running && !exists
 }
 
+/// How often the panel's light or dark style is read again.
+const TRAY_COLOUR_EVERY: Duration = Duration::from_secs(3);
+
+/// The tray icon's colour on a panel that is dark or light. An unknown panel
+/// keeps the app's own full-colour icon, which reads on either; so does the
+/// macOS menu bar, where it is the template the bar recolours.
+fn tray_colour(panel_dark: Option<bool>) -> fastframe_tray::IconColour {
+    use fastframe_tray::IconColour;
+    match panel_dark {
+        Some(true) => IconColour::White,
+        Some(false) => IconColour::Black,
+        None => IconColour::Original,
+    }
+}
+
 /// Process-level app services.
 #[derive(Clone, Copy, Debug)]
 pub struct AppOptions {
@@ -1715,6 +1732,7 @@ impl App {
             tray_allowed: false,
             tray_failed: false,
             tray_badge: 0,
+            tray_colour_checked: None,
             power: fastframe_power::Power::fixed(Default::default()),
             #[cfg(target_os = "linux")]
             system_appearance: None,
@@ -2262,6 +2280,7 @@ impl App {
         // back on, not on every frame.
         self.tray_failed = self.tray.is_none();
         self.tray_badge = 0;
+        self.tray_colour_checked = None;
     }
 
     /// Offers "Lock ZapFast" in the tray exactly while an app lock password
@@ -2284,6 +2303,7 @@ impl App {
                 tray.set_visible(TRAY_LOCK, lockable);
             }
         }
+        self.sync_tray_colour(Instant::now());
         // The same count as the taskbar's; a new icon only when it shows.
         let count = self.unread_chat_count_everywhere();
         let level = crate::util::tray_badge_level(count);
@@ -2294,6 +2314,47 @@ impl App {
             tray.set_icon(icon, Some(template));
             self.tray_badge = level;
         }
+    }
+
+    /// Keeps the tray icon monochrome against the panel, as the macOS menu
+    /// bar does by itself (#518). Windows has no signal without a window, so
+    /// this asks every few seconds.
+    fn sync_tray_colour(&mut self, now: Instant) {
+        if self
+            .tray_colour_checked
+            .is_some_and(|checked| now.duration_since(checked) < TRAY_COLOUR_EVERY)
+        {
+            return;
+        }
+        self.tray_colour_checked = Some(now);
+        let colour = tray_colour(self.panel_is_dark());
+        if let Some(tray) = &mut self.tray {
+            tray.set_icon_colour(colour);
+        }
+    }
+
+    /// Whether the desktop's panel is dark, where that can be known. GNOME's
+    /// top bar is dark in light mode too; other Linux panels follow the
+    /// desktop's colour scheme.
+    #[cfg(target_os = "linux")]
+    fn panel_is_dark(&self) -> Option<bool> {
+        if fastframe_desktop::is_gnome() {
+            return Some(true);
+        }
+        self.system_appearance.as_ref()?.dark()
+    }
+
+    /// Whether the taskbar is dark, which Windows sets apart from the apps'
+    /// light or dark mode.
+    #[cfg(windows)]
+    fn panel_is_dark(&self) -> Option<bool> {
+        crate::util::windows_taskbar_dark()
+    }
+
+    /// The macOS menu bar recolours its template icon by itself.
+    #[cfg(not(any(target_os = "linux", windows)))]
+    fn panel_is_dark(&self) -> Option<bool> {
+        None
     }
 
     fn handle_control_commands(&mut self) {
@@ -15180,6 +15241,14 @@ mod tests {
         // Tests and demos have none, and one item is enough.
         assert!(!super::wants_tray_item(false, true, false));
         assert!(!super::wants_tray_item(true, true, true));
+    }
+
+    #[test]
+    fn the_tray_icon_is_monochrome_against_a_known_panel() {
+        use fastframe_tray::IconColour;
+        assert_eq!(super::tray_colour(Some(true)), IconColour::White);
+        assert_eq!(super::tray_colour(Some(false)), IconColour::Black);
+        assert_eq!(super::tray_colour(None), IconColour::Original);
     }
 
     #[test]
