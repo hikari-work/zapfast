@@ -1,4 +1,4 @@
-//! Playback for WhatsApp GIFs and animated stickers, and downloaded media posters.
+//! Playback for WhatsApp GIFs, animated WebP and Lottie stickers, and downloaded media posters.
 //!
 //! Decoding runs off the UI thread. Photos, GIFs, and H.264 MP4 decode in-process;
 //! other MP4 codecs use `ffmpeg` when available. Idle animations are removed
@@ -447,6 +447,7 @@ fn decode(path: &Path, limit: usize) -> Option<Decoded> {
             decode_image(path, &extension, limit).or_else(|| decode_still(path))
         }
         "webp" | "gif" => decode_image(path, &extension, limit),
+        "was" => crate::lottie::decode(path, limit).map(|frames| Decoded { frames }),
         _ => decode_video(path, limit),
     }
 }
