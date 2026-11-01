@@ -617,6 +617,11 @@ pub enum Command {
         chat: ChatId,
         name: String,
     },
+    /// Changes a group's description on WhatsApp; empty removes it.
+    SetGroupDescription {
+        chat: ChatId,
+        description: String,
+    },
     /// Asks for a picture and makes it the group's photo.
     PickGroupPicture(ChatId),
     /// Sets the group's photo to a JPEG, or removes it with `None`.
@@ -1553,6 +1558,8 @@ pub enum Event {
 pub enum GroupEdit {
     /// The new subject.
     Name(String),
+    /// The new description, empty when removed.
+    Description(String),
     /// A new photo, or none.
     Picture { removed: bool },
 }
