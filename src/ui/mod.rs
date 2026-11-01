@@ -4,6 +4,7 @@ pub mod accounts;
 mod attachment_preview;
 pub mod call;
 pub mod calls;
+mod chat_export;
 pub mod chats;
 pub mod conversation;
 pub mod dialogs;
