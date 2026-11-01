@@ -2484,8 +2484,17 @@ impl App {
         let (name, is_group) = (self.chat_title(chat), chat.is_group());
         let chat_sound = chat.notification_sound.clone();
         let sender = self.display_name_or(&message.sender, message.sender_name.as_deref());
-        let (title, body) =
-            crate::notify::lines(&name, is_group, &sender, &self.message_text(message));
+        // With several numbers linked, say which one was written to.
+        let account = self
+            .has_several_accounts()
+            .then(|| self.account().display_label(self.locale));
+        let (title, body) = crate::notify::lines(
+            &name,
+            is_group,
+            &sender,
+            &self.message_text(message),
+            account.as_deref(),
+        );
         // Prefer the chat picture, then the sender picture. Cached files work
         // before the chat list loads; new requests help later notifications.
         let sender = message.sender.clone();
